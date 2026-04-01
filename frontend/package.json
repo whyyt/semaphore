@@ -21,7 +21,7 @@
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "latest",
-    "viem": "^2.47.6",
+    "viem": "2.38.3",
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
