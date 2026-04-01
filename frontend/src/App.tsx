@@ -18,13 +18,8 @@ function ProtectedRoute({ children }: { children: ReactElement }) {
   const { address, isConnected } = useAccount();
   const { state, syncPending } = useAppState();
   const hasRestorableSession = isConnected && hasPersistedAuthSession(address ?? state.session.walletAddress);
-  const restoringSession =
-    hasRestorableSession &&
-    isConnected &&
-    (!state.session.walletAddress || !state.session.inviteVerified);
-
-  if (restoringSession || (syncPending && hasRestorableSession && !state.session.inviteVerified)) {
-    return null;
+  if (syncPending && hasRestorableSession && !state.session.inviteVerified) {
+    return <Navigate to="/onboarding" replace />;
   }
 
   if (!state.session.inviteVerified || !state.session.signatureVerified) {
@@ -52,17 +47,8 @@ function RouteMemory() {
 
 function RootRedirect() {
   const { address, isConnected } = useAccount();
-  const { state, syncPending } = useAppState();
-  const hasRestorableSession = isConnected && hasPersistedAuthSession(address ?? state.session.walletAddress);
+  const { state } = useAppState();
   const isAuthenticated = state.session.inviteVerified && state.session.signatureVerified;
-  const restoringSession =
-    hasRestorableSession &&
-    isConnected &&
-    (!state.session.walletAddress || !state.session.inviteVerified);
-
-  if (restoringSession || (syncPending && hasRestorableSession && !state.session.inviteVerified)) {
-    return null;
-  }
 
   const nextRoute = isAuthenticated ? "/discover" : "/onboarding";
 
