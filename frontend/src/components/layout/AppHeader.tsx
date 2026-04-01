@@ -1,10 +1,10 @@
 import { ReactNode } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Link, NavLink } from "react-router-dom";
 import { useAccount } from "wagmi";
 
 import { formatWalletLabel } from "../../lib/format";
 import { useAppState } from "../../state/useAppState";
+import { WalletStatusControl } from "../ui/WalletStatusControl";
 
 interface AppHeaderProps {
   backTo?: string;
@@ -61,7 +61,7 @@ export function AppHeader({ backTo, backLabel = "返回", rightSlot }: AppHeader
           <div className="rounded-full border border-[var(--line)] bg-[rgba(26,26,46,0.9)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
             {addressLabel}
           </div>
-          <ConnectButton accountStatus="avatar" chainStatus="icon" showBalance={false} />
+          <WalletStatusControl />
         </div>
       </div>
     </header>

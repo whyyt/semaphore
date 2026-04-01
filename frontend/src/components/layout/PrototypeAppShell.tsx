@@ -1,14 +1,10 @@
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useAccount, useDisconnect } from "wagmi";
+import { ReactNode, useMemo } from "react";
+import { Link, NavLink } from "react-router-dom";
 
 import { BrandMark } from "../ui/BrandMark";
-import { GeneratedAvatar } from "../ui/GeneratedAvatar";
-import { formatWalletLabel } from "../../lib/format";
 import { useAppState } from "../../state/useAppState";
 import { cn } from "../../lib/cn";
-import { clearAuthSession } from "../../lib/authSession";
+import { WalletStatusControl } from "../ui/WalletStatusControl";
 
 interface PrototypeAppShellProps {
   activeTab: "feed" | "hub";
@@ -17,15 +13,7 @@ interface PrototypeAppShellProps {
 }
 
 export function PrototypeAppShell({ activeTab, children, fabTo }: PrototypeAppShellProps) {
-  const navigate = useNavigate();
-  const { disconnectAsync } = useDisconnect();
-  const { address } = useAccount();
   const { state } = useAppState();
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const walletAddress = address ?? state.session.walletAddress ?? "";
-  const walletLabel = formatWalletLabel(walletAddress);
   const personalHubCount = useMemo(
     () =>
       state.answers.filter((answer) => answer.status !== "authorized").length +
@@ -33,57 +21,6 @@ export function PrototypeAppShell({ activeTab, children, fabTo }: PrototypeAppSh
       state.gifts.length,
     [state.answers, state.gifts.length, state.invites.length],
   );
-
-  useEffect(() => {
-    if (!menuOpen) {
-      return undefined;
-    }
-
-    const handleClick = (event: MouseEvent) => {
-      if (!dropdownRef.current?.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!toast) {
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => setToast(null), 2200);
-    return () => window.clearTimeout(timeoutId);
-  }, [toast]);
-
-  async function handleCopyAddress() {
-    if (!walletAddress) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(walletAddress);
-    } catch {
-      return;
-    }
-
-    setToast("Copied ✓");
-    setMenuOpen(false);
-  }
-
-  async function handleDisconnect() {
-    try {
-      clearAuthSession();
-      await disconnectAsync();
-    } catch {
-      return;
-    }
-
-    setMenuOpen(false);
-    navigate("/onboarding", { replace: true });
-  }
 
   return (
     <div className="min-h-screen bg-[#09090F] font-mono text-[var(--text-primary)]">
@@ -103,93 +40,7 @@ export function PrototypeAppShell({ activeTab, children, fabTo }: PrototypeAppSh
                 badge={personalHubCount}
               />
             </nav>
-
-            <ConnectButton.Custom>
-              {({
-                account,
-                authenticationStatus,
-                chain,
-                mounted,
-                openChainModal,
-                openConnectModal,
-              }) => {
-                const ready = mounted && authenticationStatus !== "loading";
-                const connected = ready && account && chain;
-
-                if (!connected) {
-                  return (
-                    <button
-                      type="button"
-                      onClick={openConnectModal}
-                      className="rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--text-primary)] transition-colors hover:border-[rgba(196,168,90,0.35)] hover:text-[var(--signal)]"
-                    >
-                      Connect Wallet
-                    </button>
-                  );
-                }
-
-                if (chain.unsupported) {
-                  return (
-                    <button
-                      type="button"
-                      onClick={openChainModal}
-                      className="rounded-full border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-4 py-2 text-xs text-[#FCA5A5] transition-colors hover:bg-[rgba(239,68,68,0.12)]"
-                    >
-                      Wrong Network
-                    </button>
-                  );
-                }
-
-                return (
-                  <div ref={dropdownRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setMenuOpen((value) => !value)}
-                      className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 transition-colors hover:border-[rgba(155,127,212,0.35)]"
-                    >
-                      <GeneratedAvatar address={walletAddress} size={24} className="border-[rgba(51,51,74,1)]" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-[#4ADE80]" />
-                      <span className="hidden text-[11px] tracking-[0.04em] text-[var(--text-primary)] sm:inline">
-                        {account.displayName ?? walletLabel}
-                      </span>
-                    </button>
-
-                    {menuOpen ? (
-                      <div className="absolute right-0 top-[calc(100%+8px)] min-w-[220px] rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] py-1 shadow-[0_20px_50px_rgba(0,0,0,0.7)]">
-                        <div className="border-b border-[var(--line)] px-4 py-3">
-                          <div className="mb-1 text-[9px] uppercase tracking-[0.14em] text-[var(--text-muted)]">Connected</div>
-                          <div className="break-all text-[10px] leading-6 text-[var(--text-secondary)]">
-                            {walletAddress || "已连接钱包"}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleCopyAddress()}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[rgba(196,168,90,0.08)] hover:text-[var(--signal)]"
-                        >
-                          ⎘ Copy address
-                        </button>
-                        <Link
-                          to="/me"
-                          onClick={() => setMenuOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[rgba(155,127,212,0.08)] hover:text-[var(--resonance)]"
-                        >
-                          ↗ Personal Hub
-                        </Link>
-                        <div className="my-1 border-t border-[var(--line)]" />
-                        <button
-                          type="button"
-                          onClick={() => void handleDisconnect()}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-[#EF4444] transition-colors hover:bg-[rgba(239,68,68,0.08)]"
-                        >
-                          ⏻ Disconnect
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              }}
-            </ConnectButton.Custom>
+            <WalletStatusControl mode="full" />
           </div>
         </div>
       </header>
@@ -206,12 +57,6 @@ export function PrototypeAppShell({ activeTab, children, fabTo }: PrototypeAppSh
         >
           +
         </Link>
-      ) : null}
-
-      {toast ? (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[rgba(196,168,90,0.45)] bg-[var(--surface-raised)] px-4 py-2 text-[11px] tracking-[0.07em] text-[var(--signal)]">
-          {toast}
-        </div>
       ) : null}
     </div>
   );

@@ -1,4 +1,4 @@
-import { darkTheme, getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
   coinbaseWallet,
   injectedWallet,
@@ -35,11 +35,3 @@ export const wagmiConfig = getDefaultConfig({
 });
 
 export const queryClient = new QueryClient();
-
-export const rainbowKitTheme = darkTheme({
-  accentColor: "#C4A85A",
-  accentColorForeground: "#111120",
-  borderRadius: "medium",
-  fontStack: "system",
-  overlayBlur: "small",
-});

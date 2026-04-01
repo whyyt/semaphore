@@ -46,13 +46,14 @@ function RouteMemory() {
 }
 
 function RootRedirect() {
-  const { address, isConnected } = useAccount();
   const { state } = useAppState();
   const isAuthenticated = state.session.inviteVerified && state.session.signatureVerified;
 
-  const nextRoute = isAuthenticated ? "/discover" : "/onboarding";
+  if (!isAuthenticated) {
+    return <OnboardingPage />;
+  }
 
-  return <Navigate replace to={nextRoute} />;
+  return <Navigate replace to="/discover" />;
 }
 
 export default function App() {

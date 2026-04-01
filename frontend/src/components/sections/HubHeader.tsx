@@ -1,8 +1,7 @@
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-
 import { BrandMark } from "../ui/BrandMark";
 import { GeneratedAvatar } from "../ui/GeneratedAvatar";
 import { formatWalletLabel } from "../../lib/format";
+import { WalletStatusControl } from "../ui/WalletStatusControl";
 
 export type HubTab = "signals" | "answers" | "invites" | "gifts";
 
@@ -38,7 +37,7 @@ export function HubHeader() {
       <span className="hidden text-[10px] tracking-[0.12em] text-[var(--text-muted)] md:inline">
         个人中心 / Personal Hub
       </span>
-      <ConnectButton accountStatus="avatar" chainStatus="icon" showBalance={false} />
+      <WalletStatusControl />
     </nav>
   );
 }
