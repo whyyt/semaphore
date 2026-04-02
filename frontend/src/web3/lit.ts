@@ -12,6 +12,7 @@ import { resolveSemaphoreProtocolAddress } from "./deployment";
 
 const LIT_CHAIN = "fuji";
 const DEFAULT_LIT_NETWORK = "datil-dev";
+const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 const SIGNAL_CONTENT_VERSION = 1;
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
 
@@ -38,6 +39,37 @@ function getLitNetworkValue(): SupportedLitNetwork {
   return DEFAULT_LIT_NETWORK;
 }
 
+function getLitConnectTimeout() {
+  const raw = import.meta.env.VITE_LIT_CONNECT_TIMEOUT_MS?.trim();
+
+  if (!raw) {
+    return DEFAULT_LIT_CONNECT_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LIT_CONNECT_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+function explainLitConnectionError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (
+    message.includes("Could not handshake with nodes after timeout") ||
+    message.includes("Could only connect to 0 of")
+  ) {
+    return new Error(
+      "无法连接 Lit 节点网络。通常是当前网络无法访问 Lit 节点，或 Lit 测试网络暂时不稳定。请刷新后重试；如果仍失败，可切换网络/VPN，或在 Vercel 中把 VITE_LIT_NETWORK 调整为更稳定的 Lit 网络，并适当增大 VITE_LIT_CONNECT_TIMEOUT_MS。",
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 function getWalletAccount(walletClient: WalletClient) {
   const account = walletClient.account;
 
@@ -51,12 +83,18 @@ function getWalletAccount(walletClient: WalletClient) {
 async function getLitClient() {
   if (!litClientPromise) {
     litClientPromise = (async () => {
-      const litClient = new LitNodeClient({
-        litNetwork: getLitNetworkValue(),
-      });
+      try {
+        const litClient = new LitNodeClient({
+          connectTimeout: getLitConnectTimeout(),
+          litNetwork: getLitNetworkValue(),
+        });
 
-      await litClient.connect();
-      return litClient;
+        await litClient.connect();
+        return litClient;
+      } catch (error) {
+        litClientPromise = null;
+        throw explainLitConnectionError(error);
+      }
     })();
   }
 
