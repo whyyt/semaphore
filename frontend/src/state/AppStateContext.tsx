@@ -30,6 +30,7 @@ import { stripHtml, truncateAddress } from "../lib/format";
 import {
   loadPrivateSignals,
   removePrivateSignal,
+  savePrivateSignal,
 } from "./privateSignalsStore";
 import {
   incrementSignalViewCount,
@@ -67,6 +68,16 @@ function explainWalletSyncError(error: unknown) {
 
 function formatCreatedLabel(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleDateString("zh-CN").replaceAll("/", ".");
+}
+
+function isLitConnectionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("无法连接 Lit 节点网络") ||
+    message.includes("Could not handshake with nodes after timeout") ||
+    message.includes("Could only connect to 0 of")
+  );
 }
 
 function optimisticPreviewIcon(tags: ComposeInput["tags"]) {
@@ -555,18 +566,33 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("请先通过钱包连接 Avalanche Fuji。");
     }
 
-    const result = await createSignal(walletClient, input);
+    try {
+      const result = await createSignal(walletClient, input);
 
-    setState((previous) =>
-      insertOptimisticSignal(previous, input, result, state.session.walletAddress!),
-    );
+      setState((previous) =>
+        insertOptimisticSignal(previous, input, result, state.session.walletAddress!),
+      );
 
-    await refreshFromChain({
-      session: state.session,
-    });
-    announceChainChange();
+      await refreshFromChain({
+        session: state.session,
+      });
+      announceChainChange();
 
-    return result.hash;
+      return result.hash;
+    } catch (error) {
+      if (input.visibility === "private" && isLitConnectionError(error)) {
+        const localSignal = savePrivateSignal(state.session.walletAddress, input);
+
+        setState((previous) => ({
+          ...previous,
+          ownSignals: [localSignal, ...previous.ownSignals].sort((left, right) => right.ts - left.ts),
+        }));
+
+        return `local:${localSignal.id}`;
+      }
+
+      throw error;
+    }
   }
 
   async function deleteSignal(signalId: number) {

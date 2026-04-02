@@ -16,7 +16,7 @@ import {
   createSignalPublicContent,
   uploadTextContent,
 } from "./contentStore";
-import { encryptSignalContent } from "./lit";
+import { encryptSignalContent, ensureLitReady } from "./lit";
 import {
   AnswerRecord,
   AppState,
@@ -498,6 +498,11 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   const protocolAddress = await resolveActiveProtocolAddress();
   const account = getWalletAccount(walletClient);
   const { hintCid, publicDocument } = await createSignalPublicContent(input);
+
+  if (input.visibility === "private") {
+    await ensureLitReady();
+  }
+
   const createHash = await walletClient.writeContract({
     abi: protocolAbi,
     account,

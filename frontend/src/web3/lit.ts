@@ -11,7 +11,7 @@ import { getEncryptedSignalContent, type EncryptedSignalJsonPayload } from "./co
 import { resolveSemaphoreProtocolAddress } from "./deployment";
 
 const LIT_CHAIN = "fuji";
-const DEFAULT_LIT_NETWORK = "datil-dev";
+const DEFAULT_LIT_NETWORK = "datil-test";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 const SIGNAL_CONTENT_VERSION = 1;
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
@@ -99,6 +99,10 @@ async function getLitClient() {
   }
 
   return litClientPromise;
+}
+
+export async function ensureLitReady() {
+  await getLitClient();
 }
 
 async function getSessionSigs(
