@@ -10,13 +10,12 @@ import {
 import artifact from "./artifacts/SemaphoreProtocol.json";
 import { FUJI_RPC_URL, resolveSemaphoreProtocolAddress, seamphoreChain } from "./deployment";
 import {
-  createEncryptedSignalDocument,
   createInviteReplyContent,
+  createSignalBodyContent,
   getStoredContent,
   createSignalPublicContent,
   uploadTextContent,
 } from "./contentStore";
-import { encryptSignalContent, ensureLitReady } from "./lit";
 import {
   AnswerRecord,
   AppState,
@@ -149,21 +148,6 @@ function explainContractReadError(error: unknown): never {
   }
 
   throw error instanceof Error ? error : new Error(message);
-}
-
-function explainCreateSignalError(
-  error: unknown,
-  options?: {
-    deactivatedBrokenSignal?: boolean;
-  },
-) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (options?.deactivatedBrokenSignal) {
-    return new Error(`${message} 我已经自动把刚才那条未完成的占位信号撤回，避免它继续留在链上。`);
-  }
-
-  return error instanceof Error ? error : new Error(message);
 }
 
 async function resolveActiveProtocolAddress(protocolAddress?: Address): Promise<Address> {
@@ -556,9 +540,13 @@ export async function ensureMember(walletClient: WalletClient, address: string) 
 export async function createSignal(walletClient: WalletClient, input: ComposeInput) {
   const protocolAddress = await resolveActiveProtocolAddress();
   const account = getWalletAccount(walletClient);
-  const { hintCid, publicDocument } = await createSignalPublicContent(input);
-
-  const litExecutionMode = await ensureLitReady();
+  const { contentCid, hintCid, publicDocument } = await createSignalPublicContent(input);
+  const isPrivateSignal = input.visibility === "private";
+  const initialContentCid = isPrivateSignal
+    ? await createSignalBodyContent(input)
+    : (contentCid ?? hintCid);
+  const fallbackQuestion =
+    input.question.trim() || (isPrivateSignal ? "仅自己可见" : "继续把它传给谁？");
 
   const createHash = await walletClient.writeContract({
     abi: protocolAbi,
@@ -567,10 +555,10 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
     args: [
       input.parentId ? BigInt(input.parentId) : 0n,
       hintCid,
-      "pending-encrypted-content",
-      input.question.trim() || "仅自己可见",
+      initialContentCid,
+      fallbackQuestion,
       input.tags,
-      input.visibility === "private" ? 1 : 0,
+      isPrivateSignal ? 1 : 0,
     ],
     chain: seamphoreChain,
     functionName: "createSignalWithVisibility",
@@ -594,62 +582,13 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   }
 
   const signalId = createdSignalId.toString();
-  let encryptedCid: string | null = null;
-  let updateHash: `0x${string}` | null = null;
-
-  try {
-    const encryptedPayload = await encryptSignalContent(
-      {
-        authorAddress: account.address,
-        contentHtml: input.contentHtml,
-        signalId,
-      },
-      litExecutionMode,
-    );
-    encryptedCid = await createEncryptedSignalDocument(encryptedPayload);
-    updateHash = await walletClient.writeContract({
-      abi: protocolAbi,
-      account,
-      address: protocolAddress,
-      args: [createdSignalId, encryptedCid],
-      chain: seamphoreChain,
-      functionName: "setEncryptedContentCID",
-    });
-
-    await publicClient.waitForTransactionReceipt({ hash: updateHash });
-
-    return {
-      encryptedCid,
-      hash: updateHash,
-      hintCid,
-      hook: publicDocument.hook,
-      signalId,
-    };
-  } catch (error) {
-    let deactivatedBrokenSignal = false;
-
-    if (!updateHash) {
-      try {
-        const rollbackHash = await walletClient.writeContract({
-          abi: protocolAbi,
-          account,
-          address: protocolAddress,
-          args: [createdSignalId],
-          chain: seamphoreChain,
-          functionName: "deactivateSignal",
-        });
-
-        await publicClient.waitForTransactionReceipt({ hash: rollbackHash });
-        deactivatedBrokenSignal = true;
-      } catch (rollbackError) {
-        console.error("Failed to deactivate broken placeholder signal", rollbackError);
-      }
-    }
-
-    throw explainCreateSignalError(error, {
-      deactivatedBrokenSignal,
-    });
-  }
+  return {
+    encryptedCid: initialContentCid,
+    hash: createHash,
+    hintCid,
+    hook: publicDocument.hook,
+    signalId,
+  };
 }
 
 export async function deactivateSignal(walletClient: WalletClient, signalId: string) {
@@ -780,8 +719,11 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
     const invites: AppState["invites"] = [];
     const gifts: AppState["gifts"] = [];
     const publicEchoes: PublicEchoRecord[] = [];
+    const echoVisibleSignals = accessibleSignals.filter(
+      (signal) => signal.visibility === "public" || signal.readable,
+    );
     const echoEntries = (await Promise.all(
-      networkSignals.flatMap((signal) => {
+      echoVisibleSignals.flatMap((signal) => {
         const rawSignal = rawById.get(signal.id);
 
         return (rawSignal?.echoIds ?? []).map(async (echoId) => {
@@ -848,8 +790,10 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
             content: stripHtml(signal.contentHtml) || signal.hook,
             contentHtml: signal.contentHtml,
             encryptedContentCID: signal.encryptedContentCID,
+            hook: signal.hook,
             id: Number(signal.id),
             linked: signal.childIds.length,
+            question: signal.question,
             replies: rawSignal.responseIds.length,
             resonances: rawSignal.echoIds.length,
             sourceSignalId: signal.id,
@@ -995,6 +939,7 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
             from: echo.from,
             id: echo.id,
             message: echo.message,
+            signalId: echo.signalId,
             ts: echo.ts,
             type: "私密礼物",
           })),

@@ -13,6 +13,7 @@ import {
   ComposeInput,
   AppState,
   InviteReplyType,
+  PublicEchoRecord,
   SessionState,
 } from "../types/domain";
 import {
@@ -30,14 +31,18 @@ import { stripHtml, truncateAddress } from "../lib/format";
 import {
   loadPrivateSignals,
   removePrivateSignal,
-  savePrivateSignal,
 } from "./privateSignalsStore";
 import {
   incrementSignalViewCount,
   loadSignalViewCounts,
 } from "./signalViewStore";
 import { AppStateContext } from "./context";
-import { clearAuthSession, hasPersistedAuthSession } from "../lib/authSession";
+import {
+  AUTH_SESSION_INACTIVITY_TIMEOUT_MS,
+  clearAuthSession,
+  hasPersistedAuthSession,
+  touchAuthSession,
+} from "../lib/authSession";
 
 function explainWalletSyncError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -68,16 +73,6 @@ function explainWalletSyncError(error: unknown) {
 
 function formatCreatedLabel(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleDateString("zh-CN").replaceAll("/", ".");
-}
-
-function isLitConnectionError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return (
-    message.includes("无法连接 Lit 节点网络") ||
-    message.includes("Could not handshake with nodes after timeout") ||
-    message.includes("Could only connect to 0 of")
-  );
 }
 
 function optimisticPreviewIcon(tags: ComposeInput["tags"]) {
@@ -172,8 +167,10 @@ function insertOptimisticSignal(
         content: stripHtml(input.contentHtml) || input.hook,
         contentHtml: input.contentHtml,
         encryptedContentCID: next.encryptedCid,
+        hook: next.hook,
         id: Number(next.signalId),
         linked: 0,
+        question: input.question,
         replies: 0,
         resonances: 0,
         sourceSignalId: next.signalId,
@@ -184,6 +181,48 @@ function insertOptimisticSignal(
       },
       ...previous.ownSignals,
     ].sort((left, right) => right.ts - left.ts),
+  };
+}
+
+function matchesPublicEcho(left: PublicEchoRecord, right: PublicEchoRecord) {
+  return (
+    left.signalId === right.signalId &&
+    left.message === right.message &&
+    left.from.toLowerCase() === right.from.toLowerCase() &&
+    Math.abs(left.ts - right.ts) <= 180
+  );
+}
+
+function insertOptimisticPublicEcho(
+  previous: AppState,
+  next: {
+    from: string;
+    message: string;
+    signalId: string;
+    ts: number;
+  },
+) {
+  const article =
+    previous.accessibleSignals.find((signal) => signal.id === next.signalId)?.title ??
+    previous.networkSignals.find((signal) => signal.id === next.signalId)?.title ??
+    "未知信号弹";
+  const optimisticEcho: PublicEchoRecord = {
+    article,
+    ens: null,
+    from: next.from,
+    id: -Date.now(),
+    message: next.message,
+    signalId: next.signalId,
+    ts: next.ts,
+  };
+
+  if (previous.publicEchoes.some((echo) => matchesPublicEcho(echo, optimisticEcho))) {
+    return previous;
+  }
+
+  return {
+    ...previous,
+    publicEchoes: [optimisticEcho, ...previous.publicEchoes].sort((left, right) => right.ts - left.ts),
   };
 }
 
@@ -274,6 +313,18 @@ function mergeInviteUi(nextState: AppState, previousState: AppState) {
   };
 }
 
+function mergeOptimisticPublicEchoes(nextState: AppState, previousState: AppState) {
+  const optimisticEchoes = previousState.publicEchoes.filter(
+    (echo) =>
+      echo.id < 0 && !nextState.publicEchoes.some((nextEcho) => matchesPublicEcho(nextEcho, echo)),
+  );
+
+  return {
+    ...nextState,
+    publicEchoes: [...optimisticEchoes, ...nextState.publicEchoes].sort((left, right) => right.ts - left.ts),
+  };
+}
+
 const CHAIN_SYNC_CHANNEL = "seamphore-chain-sync";
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
@@ -286,7 +337,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [syncUnlocked, setSyncUnlocked] = useState(false);
   const autoRecoverKeyRef = useRef<string | null>(null);
   const chainSyncChannelRef = useRef<BroadcastChannel | null>(null);
+  const idleTimeoutRef = useRef<number | null>(null);
   const lastConnectedAddressRef = useRef<string | null>(null);
+  const lastSessionTouchRef = useRef(0);
   const recentViewMarksRef = useRef<Record<string, number>>({});
   const { address, connector, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
@@ -317,7 +370,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const chainState = await buildChainState(next.session);
 
-      setState((previous) => mergePrivateSignals(mergeInviteUi(chainState, previous)));
+      setState((previous) =>
+        mergePrivateSignals(
+          mergeInviteUi(mergeOptimisticPublicEchoes(chainState, previous), previous),
+        ),
+      );
       setSyncError(null);
       return true;
     } catch (error) {
@@ -334,7 +391,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     isConnected: boolean;
     walletClient: typeof walletClient;
   }) {
-    if (!next.force && !syncUnlocked) {
+    const hasRestorableSession = next.address ? hasPersistedAuthSession(next.address) : false;
+
+    if (!next.force && !syncUnlocked && !hasRestorableSession) {
       return;
     }
 
@@ -378,6 +437,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         session: connectedSession,
       });
 
+      setSyncUnlocked(true);
       if (refreshed) {
         setState((previous) => ({
           ...previous,
@@ -467,6 +527,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   });
 
+  const expireIdleSession = useEffectEvent(() => {
+    clearAuthSession();
+    setSyncUnlocked(false);
+    setSyncPending(false);
+    setSyncError("已超过 5 分钟无操作，请重新连接并签名。");
+    setState(createRuntimeState());
+  });
+
+  const markSessionActive = useEffectEvent((walletAddress: string) => {
+    const now = Date.now();
+
+    if (now - lastSessionTouchRef.current < 30_000) {
+      return;
+    }
+
+    touchAuthSession(walletAddress);
+    lastSessionTouchRef.current = now;
+  });
+
   function announceChainChange() {
     chainSyncChannelRef.current?.postMessage({
       timestamp: Date.now(),
@@ -540,6 +619,58 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const walletAddress = state.session.walletAddress;
+    const isAuthenticated = state.session.inviteVerified && state.session.signatureVerified;
+
+    if (!isAuthenticated || !walletAddress) {
+      if (idleTimeoutRef.current !== null) {
+        window.clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+      }
+
+      return;
+    }
+
+    const resetIdleTimer = () => {
+      if (idleTimeoutRef.current !== null) {
+        window.clearTimeout(idleTimeoutRef.current);
+      }
+
+      idleTimeoutRef.current = window.setTimeout(() => {
+        expireIdleSession();
+      }, AUTH_SESSION_INACTIVITY_TIMEOUT_MS);
+    };
+
+    const handleUserActivity = () => {
+      markSessionActive(walletAddress);
+      resetIdleTimer();
+    };
+
+    handleUserActivity();
+
+    window.addEventListener("pointerdown", handleUserActivity);
+    window.addEventListener("keydown", handleUserActivity);
+    window.addEventListener("touchstart", handleUserActivity, { passive: true });
+    window.addEventListener("scroll", handleUserActivity, { passive: true });
+
+    return () => {
+      if (idleTimeoutRef.current !== null) {
+        window.clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+      }
+
+      window.removeEventListener("pointerdown", handleUserActivity);
+      window.removeEventListener("keydown", handleUserActivity);
+      window.removeEventListener("touchstart", handleUserActivity);
+      window.removeEventListener("scroll", handleUserActivity);
+    };
+  }, [
+    state.session.inviteVerified,
+    state.session.signatureVerified,
+    state.session.walletAddress,
+  ]);
+
+  useEffect(() => {
     if (
       !isConnected ||
       !address ||
@@ -603,33 +734,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("请先通过钱包连接 Avalanche Fuji。");
     }
 
-    try {
-      const result = await createSignal(walletClient, input);
+    const result = await createSignal(walletClient, input);
 
-      setState((previous) =>
-        insertOptimisticSignal(previous, input, result, state.session.walletAddress!),
-      );
+    setState((previous) =>
+      insertOptimisticSignal(previous, input, result, state.session.walletAddress!),
+    );
 
-      await refreshFromChain({
-        session: state.session,
-      });
-      announceChainChange();
+    await refreshFromChain({
+      session: state.session,
+    });
+    announceChainChange();
 
-      return result.hash;
-    } catch (error) {
-      if (input.visibility === "private" && isLitConnectionError(error)) {
-        const localSignal = savePrivateSignal(state.session.walletAddress, input);
-
-        setState((previous) => ({
-          ...previous,
-          ownSignals: [localSignal, ...previous.ownSignals].sort((left, right) => right.ts - left.ts),
-        }));
-
-        return `local:${localSignal.id}`;
-      }
-
-      throw error;
-    }
+    return result.hash;
   }
 
   async function deleteSignal(signalId: number) {
@@ -703,7 +819,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("请先连接钱包。");
     }
 
-    await submitEchoOnChain(walletClient, signalId, destination, content);
+    const trimmedContent = content.trim() || "收下这份回响。";
+    await submitEchoOnChain(walletClient, signalId, destination, trimmedContent);
+
+    if (destination === "public") {
+      const walletAddress = state.session.walletAddress;
+      const createdAt = Math.floor(Date.now() / 1000);
+
+      setState((previous) =>
+        insertOptimisticPublicEcho(previous, {
+          from: walletAddress,
+          message: trimmedContent,
+          signalId,
+          ts: createdAt,
+        }),
+      );
+    }
+
     await refreshFromChain({
       session: state.session,
     });

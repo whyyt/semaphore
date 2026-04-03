@@ -1,7 +1,6 @@
 import { type WalletClient } from "viem";
 
 import { getContentDocument } from "./contentStore";
-import { decryptSignalContent, PENDING_ENCRYPTED_CONTENT_CID } from "./lit";
 
 type ResolveSignalBodyParams = {
   encryptedContentCid?: string | null;
@@ -12,7 +11,7 @@ type ResolveSignalBodyParams = {
 export type ResolvedSignalBody = {
   contentHtml: string;
   sourceCid: string;
-  sourceType: "combined" | "encrypted";
+  sourceType: "combined";
 };
 
 async function readDirectBodyFromCid(cid: string) {
@@ -39,32 +38,18 @@ export async function resolveSignalBodyFromChain(
   const encryptedContentCid = params.encryptedContentCid?.trim() ?? "";
   const hintCid = params.hintCid?.trim() ?? "";
 
-  if (encryptedContentCid && encryptedContentCid !== PENDING_ENCRYPTED_CONTENT_CID) {
-    const encryptedDocument = await readDirectBodyFromCid(encryptedContentCid);
+  if (encryptedContentCid) {
+    const contentDocument = await readDirectBodyFromCid(encryptedContentCid);
 
-    if (encryptedDocument && "contentHtml" in encryptedDocument) {
-      return encryptedDocument;
+    if (contentDocument && "contentHtml" in contentDocument) {
+      return contentDocument;
     }
 
-    if (!params.walletClient) {
-      throw new Error("需要先连接钱包并完成签名，才能解开这条链上正文。");
-    }
-
-    if (!encryptedDocument || encryptedDocument.kind === "signal-private-encrypted") {
-      return {
-        contentHtml: await decryptSignalContent(params.walletClient, {
-          encryptedCid: encryptedContentCid,
-        }),
-        sourceCid: encryptedContentCid,
-        sourceType: "encrypted",
-      };
-    }
-
-    if (encryptedDocument.kind === "signal-public") {
+    if (contentDocument?.kind === "signal-public") {
       throw new Error("链上正文 CID 现在指向的是预览文档，不是真正的正文内容。");
     }
 
-    if (encryptedDocument.kind === "text") {
+    if (contentDocument?.kind === "text") {
       throw new Error("链上正文 CID 现在指向的是纯文本回应，不是可阅读的正文文档。");
     }
   }
@@ -75,12 +60,6 @@ export async function resolveSignalBodyFromChain(
     if (hintDocument && "contentHtml" in hintDocument) {
       return hintDocument;
     }
-  }
-
-  if (encryptedContentCid === PENDING_ENCRYPTED_CONTENT_CID) {
-    throw new Error(
-      "这条信号链上的正文 CID 还没有写成功。现在链上仍是占位 CID，不是单纯 IPFS 读取失败；只有作者把真正的正文 CID 写上链后，这里才能读到正文。",
-    );
   }
 
   if (encryptedContentCid) {

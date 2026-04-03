@@ -220,7 +220,11 @@ export function PersonalHubPage() {
           <section className="space-y-4">
             <HubSectionHeader icon="♦" label="礼物 · 阅后感" />
             {state.gifts.map((gift) => (
-              <HubGiftCard key={gift.id} gift={gift} />
+              <HubGiftCard
+                key={gift.id}
+                gift={gift}
+                onOpen={() => navigate(`/signals/${gift.signalId}/read`)}
+              />
             ))}
             {!state.gifts.length ? (
               <HubEmptyState
@@ -245,8 +249,10 @@ export function PersonalHubPage() {
               </div>
             </div>
             <div className="mb-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-3 font-display text-sm leading-7 text-[var(--text-secondary)]">
-              {deleteTarget.content.slice(0, 90)}
-              {deleteTarget.content.length > 90 ? "…" : ""}
+              <div>{deleteTarget.hook?.trim() || deleteTarget.title || "未命名信号弹"}</div>
+              <div className="mt-2 text-xs leading-6 text-[var(--signal)]">
+                “{deleteTarget.question?.trim() || "暂未写下问题"}”
+              </div>
             </div>
             {deleteTarget.linked > 0 ? (
               <div className="mb-4 flex gap-2 rounded-xl border border-[rgba(196,168,90,0.35)] bg-[rgba(196,168,90,0.1)] px-3 py-3 text-sm leading-6 text-[var(--signal)]">

@@ -15,40 +15,6 @@ import {
 
 export type HubToastTone = "amber" | "violet" | "green" | "red";
 
-const replyOptions: Array<{
-  className: string;
-  color: string;
-  desc: string;
-  icon: string;
-  key: InviteReplyType;
-  label: string;
-}> = [
-  {
-    className: "border-[rgba(155,127,212,0.4)] bg-[rgba(155,127,212,0.1)]",
-    color: "#9B7FD4",
-    desc: "只有作者能看到",
-    icon: "🔐",
-    key: "private",
-    label: "私信作者",
-  },
-  {
-    className: "border-[rgba(196,168,90,0.4)] bg-[rgba(196,168,90,0.1)]",
-    color: "#C4A85A",
-    desc: "文章读者均可见",
-    icon: "◎",
-    key: "public",
-    label: "文章内公开",
-  },
-  {
-    className: "border-[rgba(74,222,128,0.3)] bg-[rgba(74,222,128,0.08)]",
-    color: "#4ADE80",
-    desc: "广播至全网 Feed",
-    icon: "✦",
-    key: "signal",
-    label: "转化为新信号弹",
-  },
-];
-
 export function HubEmptyState({
   description,
   title,
@@ -92,6 +58,8 @@ export function HubSignalCard({
   onDelete: () => void;
   signal: OwnedSignalRecord;
 }) {
+  const displayHook = signal.hook?.trim() || signal.title?.trim() || signal.content.slice(0, 40);
+  const displayQuestion = signal.question?.trim() || null;
   const storageLabel =
     signal.visibility === "private"
       ? "◌ 仅自己可见"
@@ -122,10 +90,16 @@ export function HubSignalCard({
       className="relative cursor-pointer overflow-hidden p-4 pl-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(196,168,90,0.35)] focus:outline-none focus:ring-2 focus:ring-[rgba(196,168,90,0.35)]"
     >
       <div className="absolute bottom-0 left-0 top-0 w-[2px] bg-gradient-to-b from-[var(--signal)] to-transparent" />
-      <p className="font-display text-sm leading-7 text-[var(--text-secondary)]">
-        {signal.content.slice(0, 120)}
-        {signal.content.length > 120 ? "…" : ""}
-      </p>
+      <div className="space-y-4">
+        <p className="font-display text-sm leading-7 text-[var(--text-secondary)]">
+          {displayHook}
+        </p>
+        <div className="rounded-[1.25rem] border border-white/5 bg-black/30 px-4 py-3">
+          <p className="font-display text-xs italic leading-6 text-[var(--signal)]">
+            “{displayQuestion ?? "暂未写下问题"}”
+          </p>
+        </div>
+      </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3 text-[10px] font-mono text-[var(--text-muted)]">
           <span>◎ {signal.resonances}</span>
@@ -147,9 +121,6 @@ export function HubSignalCard({
             ✕ 删除
           </button>
         </div>
-      </div>
-      <div className="mt-3 font-mono text-[10px] text-[var(--text-muted)]">
-        Block #{signal.blockNumber} · {formatDateLabel(signal.ts)}
       </div>
     </Panel>
   );
@@ -205,10 +176,6 @@ export function HubAnswerCard({
 export function HubInviteCard({
   invite,
   onRead,
-  onReplyText,
-  onReplyType,
-  onSubmit,
-  onToggle,
 }: {
   invite: InviteRecord;
   onRead?: () => void;
@@ -242,76 +209,39 @@ export function HubInviteCard({
         <div className="mt-4 flex gap-2">
           {invite.canRead && onRead ? (
             <Button variant="green" className="flex-1" onClick={onRead}>
-              ✓ 先看正文
+              ✓ 点击查看原文
             </Button>
           ) : null}
-          {invite.canReply === false ? null : (
-            <Button variant={invite.replying ? "violet" : "amber"} className="flex-1" onClick={onToggle}>
-              {invite.replying ? "▲ 收起" : "↩ 回复邀请"}
-            </Button>
-          )}
         </div>
-        {invite.canRead && invite.canReply === false ? (
-          <div className="mt-3 text-[10px] leading-6 text-[var(--text-muted)]">
-            先进入正文阅读，回来后这里会开放回复。
-          </div>
-        ) : null}
       </div>
-
-      {invite.replying && invite.canReply !== false ? (
-        <div className="border-t border-[var(--line)] bg-[rgba(24,24,42,0.9)] p-4">
-          <div className="mb-3 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
-            选择回复方式
-          </div>
-          <div className="space-y-2">
-            {replyOptions.map((option) => {
-              const selected = invite.replyType === option.key;
-
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => onReplyType(option.key)}
-                  className={
-                    selected
-                      ? `flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left ${option.className}`
-                      : "flex w-full items-center gap-3 rounded-xl border border-[var(--line)] bg-[rgba(17,17,32,0.9)] px-3 py-3 text-left"
-                  }
-                >
-                  <span style={{ color: option.color }}>{option.icon}</span>
-                  <div>
-                    <div className="text-sm text-[var(--text-primary)]">{option.label}</div>
-                    <div className="text-[9px] text-[var(--text-muted)]">{option.desc}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <textarea
-            value={invite.replyText}
-            onChange={(event) => onReplyText(event.target.value)}
-            placeholder={invite.replyType === "signal" ? "写下你的信号弹内容…" : "写下你的回复…"}
-            className="mt-3 min-h-[88px] w-full resize-none rounded-xl border border-[var(--line)] bg-[rgba(17,17,32,0.9)] px-3 py-3 font-display text-sm leading-7 text-[var(--text-primary)] outline-none"
-          />
-
-          <Button
-            variant={invite.replyType && invite.replyText.trim() ? "violet" : "ghost"}
-            className="mt-3 w-full"
-            onClick={onSubmit}
-            disabled={!invite.replyType || !invite.replyText.trim()}
-          >
-            发送回复 ↑
-          </Button>
-        </div>
-      ) : null}
     </Panel>
   );
 }
 
-export function HubGiftCard({ gift }: { gift: GiftRecord }) {
+export function HubGiftCard({
+  gift,
+  onOpen,
+}: {
+  gift: GiftRecord;
+  onOpen: () => void;
+}) {
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    onOpen();
+  }
+
   return (
-    <Panel className="p-4 transition-all duration-200 hover:border-[rgba(196,168,90,0.35)]">
+    <Panel
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+      className="cursor-pointer p-4 transition-all duration-200 hover:border-[rgba(196,168,90,0.35)] focus:outline-none focus:ring-2 focus:ring-[rgba(196,168,90,0.35)]"
+    >
       <div className="mb-3 flex items-center gap-3">
         <SenderAvatar address={gift.from} size={28} />
         <div className="flex-1">

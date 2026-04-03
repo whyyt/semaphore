@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import type { KeyboardEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { GeneratedAvatar } from "../ui/GeneratedAvatar";
 import { formatDateTimeLabel, truncateAddress } from "../../lib/format";
@@ -10,26 +11,39 @@ interface SignalCardProps {
 }
 
 export function SignalCard({ signal }: SignalCardProps) {
-  const { state, getSignalViewCount } = useAppState();
-  const viewerAddress = state.session.walletAddress?.toLowerCase() ?? null;
-  const isAuthor = viewerAddress === signal.authorAddress.toLowerCase();
+  const navigate = useNavigate();
+  const { getSignalViewCount } = useAppState();
   const viewCount = getSignalViewCount(signal.id);
-  const primaryHref =
-    isAuthor || signal.viewerAccessState === "authorized" ? `/signals/${signal.id}/read` : `/signals/${signal.id}`;
   const signalLabel = signal.parentId ? "Letter" : "Signal";
   const detailHref = `/signals/${signal.id}`;
 
+  function handleOpenDetail() {
+    navigate(detailHref);
+  }
+
+  function handleCardKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleOpenDetail();
+  }
+
   return (
-    <article className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-5 py-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[rgba(196,168,90,0.24)]">
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={handleOpenDetail}
+      onKeyDown={handleCardKeyDown}
+      className="cursor-pointer overflow-hidden rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-5 py-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[rgba(196,168,90,0.24)] focus:outline-none focus-visible:border-[rgba(196,168,90,0.35)] focus-visible:ring-2 focus-visible:ring-[rgba(196,168,90,0.18)]"
+    >
       <div className="mb-3 flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <GeneratedAvatar address={signal.authorAddress} size={36} className="border-[rgba(51,51,74,1)]" />
           <div>
             <div className="text-xs tracking-[0.04em] text-[var(--text-secondary)]">
               {signal.authorLabel || truncateAddress(signal.authorAddress)}
-            </div>
-            <div className="mt-1 text-[10px] tracking-[0.03em] text-[var(--text-muted)]">
-              Block #{signal.blockHeight} · {formatDateTimeLabel(signal.createdAt)}
             </div>
           </div>
         </div>
@@ -51,6 +65,7 @@ export function SignalCard({ signal }: SignalCardProps) {
 
       <Link
         to={detailHref}
+        onClick={(event) => event.stopPropagation()}
         className="block rounded-2xl pl-12 font-display text-[15px] leading-8 text-[var(--text-primary)] transition-colors hover:text-[var(--signal)]"
       >
         {signal.hook}
@@ -75,16 +90,9 @@ export function SignalCard({ signal }: SignalCardProps) {
           </span>
         </div>
 
-        {signal.txHash ? (
-          <Link
-            to={primaryHref}
-            className="text-[10px] tracking-[0.03em] text-[var(--text-muted)] opacity-70 transition-opacity hover:opacity-100"
-          >
-            {signal.txHash.slice(0, 12)}... ↗
-          </Link>
-        ) : (
-          <span className="text-[10px] tracking-[0.03em] text-[var(--text-muted)] opacity-60">暂无交易哈希</span>
-        )}
+        <span className="text-[10px] tracking-[0.03em] text-[var(--text-muted)] opacity-70">
+          Block #{signal.blockHeight} · {formatDateTimeLabel(signal.createdAt)}
+        </span>
       </div>
     </article>
   );

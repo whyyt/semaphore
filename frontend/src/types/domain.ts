@@ -59,6 +59,8 @@ export interface OwnedSignalRecord {
   id: number;
   sourceSignalId?: string;
   title?: string;
+  hook?: string;
+  question?: string;
   content: string;
   contentHtml?: string;
   encryptedContentCID?: string;
@@ -103,6 +105,7 @@ export interface InviteRecord {
 
 export interface GiftRecord {
   id: number;
+  signalId: string;
   from: string;
   ens: string | null;
   message: string;

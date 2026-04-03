@@ -1,5 +1,3 @@
-import type { EncryptToJsonPayload } from "@lit-protocol/types";
-
 import { ComposeInput, InviteReplyType, TagId } from "../types/domain";
 import { stripHtml } from "../lib/format";
 
@@ -34,15 +32,7 @@ export type TextContent = BaseContentDocument & {
   text: string;
 };
 
-export type EncryptedSignalJsonPayload = EncryptToJsonPayload;
-
-export type EncryptedSignalPrivateContent = BaseContentDocument & {
-  kind: "signal-private-encrypted";
-  payload: EncryptedSignalJsonPayload;
-};
-
 export type StoredContent =
-  | EncryptedSignalPrivateContent
   | SignalCombinedContent
   | SignalPublicContent
   | TextContent;
@@ -224,10 +214,6 @@ export async function getContentDocument(cid: string) {
   return fetchIpfsJson<StoredContent>(cid);
 }
 
-export async function getEncryptedSignalContent(cid: string) {
-  return fetchIpfsJson<EncryptedSignalPrivateContent>(cid);
-}
-
 export async function uploadTextContent(
   text: string,
   options: {
@@ -280,11 +266,38 @@ export async function createInviteReplyContent(replyType: InviteReplyType, text:
 
 export async function createSignalPublicContent(input: ComposeInput) {
   const hook = buildSignalHook(input);
+  const previewIcon = tagToEmoji(input.tags[0]);
+  const title = buildSignalTitle(hook);
+
+  if (input.visibility === "public") {
+    const publicDocument: SignalCombinedContent = {
+      contentHtml: input.contentHtml,
+      hook,
+      kind: "signal-combined",
+      previewIcon,
+      title,
+      version: 1,
+    };
+    const cid = await uploadJsonDocument(publicDocument, {
+      keyvalues: {
+        kind: "signal-combined",
+        visibility: input.visibility,
+      },
+      name: `signal-public-${Date.now()}`,
+    });
+
+    return {
+      contentCid: cid,
+      hintCid: cid,
+      publicDocument,
+    };
+  }
+
   const publicDocument: SignalPublicContent = {
     hook,
     kind: "signal-public",
-    previewIcon: tagToEmoji(input.tags[0]),
-    title: buildSignalTitle(hook),
+    previewIcon,
+    title,
     version: 1,
   };
 
@@ -297,23 +310,31 @@ export async function createSignalPublicContent(input: ComposeInput) {
   });
 
   return {
+    contentCid: null,
     hintCid,
     publicDocument,
   };
 }
 
-export async function createEncryptedSignalDocument(payload: EncryptedSignalJsonPayload) {
+export async function createSignalBodyContent(input: ComposeInput) {
+  const hook = buildSignalHook(input);
+  const document: SignalCombinedContent = {
+    contentHtml: input.contentHtml,
+    hook,
+    kind: "signal-combined",
+    previewIcon: tagToEmoji(input.tags[0]),
+    title: buildSignalTitle(hook),
+    version: 1,
+  };
+
   return uploadJsonDocument(
-    {
-      kind: "signal-private-encrypted",
-      payload,
-      version: 1,
-    },
+    document,
     {
       keyvalues: {
-        kind: "signal-private-encrypted",
+        kind: "signal-combined",
+        visibility: input.visibility,
       },
-      name: `signal-private-${Date.now()}`,
+      name: `signal-body-${Date.now()}`,
     },
   );
 }

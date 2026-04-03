@@ -20,8 +20,12 @@ export function RespondPage() {
   const walletAddress = state.session.walletAddress?.toLowerCase() ?? null;
   const isAuthor = walletAddress === signal.authorAddress.toLowerCase();
 
-  if (isAuthor || signal.viewerAccessState !== "none") {
-    return <Navigate to={`/signals/${signal.id}`} replace />;
+  if (isAuthor) {
+    return <Navigate to="/discover" replace />;
+  }
+
+  if (stage === "writing" && signal.viewerAccessState !== "none") {
+    return <Navigate to="/discover" replace />;
   }
 
   function handleSeal() {
@@ -30,19 +34,20 @@ export function RespondPage() {
     }
 
     setIsSealing(true);
+    setStage("waiting");
 
     void submitResponse(signalId, content.trim())
       .then(() => {
         setContent("");
         setIsSealing(false);
-        setStage("waiting");
         window.setTimeout(() => {
-          navigate(`/signals/${signalId}`, { replace: true });
+          navigate("/discover", { replace: true });
         }, 1600);
       })
       .catch((error) => {
         window.alert(error instanceof Error ? error.message : "提交失败，请重试。");
         setIsSealing(false);
+        setStage("writing");
       });
   }
 
@@ -99,10 +104,10 @@ export function RespondPage() {
           </>
         ) : (
           <button
-            onClick={() => navigate(`/signals/${signal.id}`, { replace: true })}
+            onClick={() => navigate("/discover", { replace: true })}
             className="text-[9px] uppercase tracking-[0.3em] text-[var(--text-muted)] transition-colors hover:text-[#C4B8E8]"
           >
-            回到信号页
+            回到首页
           </button>
         )}
       </footer>
