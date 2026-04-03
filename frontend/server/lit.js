@@ -1,12 +1,19 @@
 const LIT_CHAIN = "fuji";
 const DEFAULT_SEMAPHORE_PROTOCOL_ADDRESS = "0xf38041633a68B25Efa4ed15181061d9b4844663F";
 const DEFAULT_LIT_NETWORK = "datil-dev";
+const DEFAULT_LIT_RPC_URL = "https://yellowstone-rpc.litprotocol.com";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 const SIGNAL_CONTENT_VERSION = 1;
+const YELLOWSTONE_NETWORK = {
+  chainId: 175188,
+  name: "yellowstone",
+};
 
 let litClientPromise = null;
 let litNodeClientClassPromise = null;
 let encryptToJsonPromise = null;
+let ethersPromise = null;
+let litContractsPromise = null;
 
 async function loadLitNodeClientNodeJs() {
   if (!litNodeClientClassPromise) {
@@ -32,6 +39,31 @@ async function loadEncryptToJson() {
   }
 
   return encryptToJsonPromise;
+}
+
+async function loadEthers() {
+  if (!ethersPromise) {
+    ethersPromise = import("ethers")
+      .then((module) => module.ethers ?? module.default?.ethers ?? module.default)
+      .catch((error) => {
+        ethersPromise = null;
+        throw error;
+      });
+  }
+
+  return ethersPromise;
+}
+
+async function loadLitContracts() {
+  if (!litContractsPromise) {
+    litContractsPromise = import("@lit-protocol/contracts")
+      .catch((error) => {
+        litContractsPromise = null;
+        throw error;
+      });
+  }
+
+  return litContractsPromise;
 }
 
 function getLitNetworkValue() {
@@ -66,6 +98,14 @@ function getLitConnectTimeout() {
   return parsed;
 }
 
+function getLitRpcUrl() {
+  return (
+    process.env.LIT_RPC_URL?.trim() ||
+    process.env.VITE_LIT_RPC_URL?.trim() ||
+    DEFAULT_LIT_RPC_URL
+  );
+}
+
 function explainLitConnectionError(error) {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -93,15 +133,70 @@ function resolveSemaphoreProtocolAddress() {
   );
 }
 
+function getStaticContractsKey(litNetwork) {
+  if (litNetwork === "datil") {
+    return "datil";
+  }
+
+  if (litNetwork === "datil-test") {
+    return "datilTest";
+  }
+
+  return "datilDev";
+}
+
+function normalizeContractContext(dataset, provider) {
+  if (!dataset || typeof dataset !== "object" || !Array.isArray(dataset.data)) {
+    throw new Error("Lit 合约静态配置缺失，无法初始化服务端 Lit。");
+  }
+
+  const contractContext = {
+    provider,
+  };
+
+  for (const contract of dataset.data) {
+    const firstContract = contract?.contracts?.[0];
+
+    if (!contract?.name || !firstContract?.address_hash || !firstContract?.ABI) {
+      continue;
+    }
+
+    contractContext[contract.name] = {
+      abi: firstContract.ABI,
+      address: firstContract.address_hash,
+    };
+  }
+
+  return contractContext;
+}
+
+async function buildLitClientOptions() {
+  const litNetwork = getLitNetworkValue();
+  const rpcUrl = getLitRpcUrl();
+  const [ethers, contractsModule] = await Promise.all([loadEthers(), loadLitContracts()]);
+  const dataset = contractsModule[getStaticContractsKey(litNetwork)];
+  const provider = new ethers.providers.StaticJsonRpcProvider(
+    {
+      skipFetchSetup: true,
+      url: rpcUrl,
+    },
+    YELLOWSTONE_NETWORK,
+  );
+
+  return {
+    connectTimeout: getLitConnectTimeout(),
+    contractContext: normalizeContractContext(dataset, provider),
+    litNetwork,
+    rpcUrl,
+  };
+}
+
 async function getLitServerClient() {
   if (!litClientPromise) {
     litClientPromise = (async () => {
       try {
         const LitNodeClientNodeJs = await loadLitNodeClientNodeJs();
-        const litClient = new LitNodeClientNodeJs({
-          connectTimeout: getLitConnectTimeout(),
-          litNetwork: getLitNetworkValue(),
-        });
+        const litClient = new LitNodeClientNodeJs(await buildLitClientOptions());
 
         await litClient.connect();
         return litClient;

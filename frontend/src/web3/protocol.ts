@@ -558,7 +558,7 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   const account = getWalletAccount(walletClient);
   const { hintCid, publicDocument } = await createSignalPublicContent(input);
 
-  await ensureLitReady();
+  const litExecutionMode = await ensureLitReady();
 
   const createHash = await walletClient.writeContract({
     abi: protocolAbi,
@@ -598,11 +598,14 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   let updateHash: `0x${string}` | null = null;
 
   try {
-    const encryptedPayload = await encryptSignalContent({
-      authorAddress: account.address,
-      contentHtml: input.contentHtml,
-      signalId,
-    });
+    const encryptedPayload = await encryptSignalContent(
+      {
+        authorAddress: account.address,
+        contentHtml: input.contentHtml,
+        signalId,
+      },
+      litExecutionMode,
+    );
     encryptedCid = await createEncryptedSignalDocument(encryptedPayload);
     updateHash = await walletClient.writeContract({
       abi: protocolAbi,

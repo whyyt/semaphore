@@ -3,12 +3,12 @@ import {
   createSiweMessage,
   generateAuthSig,
 } from "@lit-protocol/auth-helpers";
-import { decryptFromJson } from "@lit-protocol/encryption";
+import { decryptFromJson, encryptToJson } from "@lit-protocol/encryption";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import { type WalletClient } from "viem";
+import { type Address, getAddress, type WalletClient } from "viem";
 
 import { getEncryptedSignalContent, type EncryptedSignalJsonPayload } from "./contentStore";
-import { APP_URL } from "./deployment";
+import { APP_URL, resolveSemaphoreProtocolAddress } from "./deployment";
 
 const LIT_CHAIN = "fuji";
 const DEFAULT_LIT_NETWORK = "datil-dev";
@@ -21,6 +21,7 @@ type ResourceAbilityRequest = {
   ability: string;
   resource: LitAccessControlConditionResource;
 };
+type LitExecutionMode = "browser" | "server";
 
 let litClientPromise: Promise<LitNodeClient> | null = null;
 
@@ -140,8 +141,99 @@ async function getBrowserLitClient() {
   return litClientPromise;
 }
 
-export async function ensureLitReady() {
-  await postLitJson("/api/lit-ready");
+function buildSignalAccessControlConditions(signalId: string, authorAddress: Address, contractAddress: Address) {
+  return [
+    {
+      chain: LIT_CHAIN,
+      conditionType: "evmBasic",
+      contractAddress: "",
+      method: "",
+      parameters: [":userAddress"],
+      returnValueTest: {
+        comparator: "=",
+        value: authorAddress,
+      },
+      standardContractType: "",
+    },
+    {
+      operator: "or",
+    },
+    {
+      chain: LIT_CHAIN,
+      conditionType: "evmContract",
+      contractAddress,
+      functionAbi: {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "signalId",
+            type: "uint256",
+          },
+          {
+            internalType: "address",
+            name: "reader",
+            type: "address",
+          },
+        ],
+        name: "hasActiveAccess",
+        outputs: [
+          {
+            internalType: "bool",
+            name: "",
+            type: "bool",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      functionName: "hasActiveAccess",
+      functionParams: [signalId, ":userAddress"],
+      returnValueTest: {
+        comparator: "=",
+        key: "",
+        value: "true",
+      },
+    },
+  ];
+}
+
+async function encryptSignalContentInBrowser(params: {
+  authorAddress: string;
+  contentHtml: string;
+  signalId: string;
+}) {
+  const litNodeClient = await getBrowserLitClient();
+  const contractAddress = await resolveSemaphoreProtocolAddress();
+  const unifiedAccessControlConditions = buildSignalAccessControlConditions(
+    params.signalId,
+    getAddress(params.authorAddress),
+    contractAddress,
+  );
+  const encryptedJson = await encryptToJson({
+    chain: LIT_CHAIN,
+    litNodeClient,
+    string: JSON.stringify({
+      contentHtml: params.contentHtml,
+      version: 1,
+    }),
+    unifiedAccessControlConditions,
+  });
+
+  return JSON.parse(encryptedJson) as EncryptedSignalJsonPayload;
+}
+
+export async function ensureLitReady(): Promise<LitExecutionMode> {
+  try {
+    await postLitJson("/api/lit-ready");
+    return "server";
+  } catch (serverError) {
+    try {
+      await getBrowserLitClient();
+      return "browser";
+    } catch (browserError) {
+      throw browserError instanceof Error ? browserError : serverError;
+    }
+  }
 }
 
 async function getSessionSigs(
@@ -211,12 +303,29 @@ export async function encryptSignalContent(
     contentHtml: string;
     signalId: string;
   },
+  preferredMode: LitExecutionMode = "server",
 ) {
-  const payload = await postLitJson<{
-    payload: EncryptedSignalJsonPayload;
-  }>("/api/lit-encrypt", params);
+  const tryServer = async () => {
+    const payload = await postLitJson<{
+      payload: EncryptedSignalJsonPayload;
+    }>("/api/lit-encrypt", params);
 
-  return payload.payload;
+    return payload.payload;
+  };
+
+  if (preferredMode === "browser") {
+    try {
+      return await encryptSignalContentInBrowser(params);
+    } catch {
+      return tryServer();
+    }
+  }
+
+  try {
+    return await tryServer();
+  } catch {
+    return encryptSignalContentInBrowser(params);
+  }
 }
 
 export async function decryptSignalContent(
