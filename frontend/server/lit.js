@@ -1,13 +1,38 @@
-import { encryptToJson } from "@lit-protocol/encryption";
-import { LitNodeClientNodeJs } from "@lit-protocol/lit-node-client-nodejs";
-
 const LIT_CHAIN = "fuji";
 const DEFAULT_SEMAPHORE_PROTOCOL_ADDRESS = "0xf38041633a68B25Efa4ed15181061d9b4844663F";
-const DEFAULT_LIT_NETWORK = process.env.NODE_ENV === "production" ? "datil-test" : "datil-dev";
+const DEFAULT_LIT_NETWORK = "datil-dev";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 const SIGNAL_CONTENT_VERSION = 1;
 
 let litClientPromise = null;
+let litNodeClientClassPromise = null;
+let encryptToJsonPromise = null;
+
+async function loadLitNodeClientNodeJs() {
+  if (!litNodeClientClassPromise) {
+    litNodeClientClassPromise = import("@lit-protocol/lit-node-client-nodejs")
+      .then((module) => module.LitNodeClientNodeJs)
+      .catch((error) => {
+        litNodeClientClassPromise = null;
+        throw error;
+      });
+  }
+
+  return litNodeClientClassPromise;
+}
+
+async function loadEncryptToJson() {
+  if (!encryptToJsonPromise) {
+    encryptToJsonPromise = import("@lit-protocol/encryption")
+      .then((module) => module.encryptToJson)
+      .catch((error) => {
+        encryptToJsonPromise = null;
+        throw error;
+      });
+  }
+
+  return encryptToJsonPromise;
+}
 
 function getLitNetworkValue() {
   const configuredNetwork = process.env.LIT_NETWORK?.trim() || process.env.VITE_LIT_NETWORK?.trim();
@@ -72,6 +97,7 @@ async function getLitServerClient() {
   if (!litClientPromise) {
     litClientPromise = (async () => {
       try {
+        const LitNodeClientNodeJs = await loadLitNodeClientNodeJs();
         const litClient = new LitNodeClientNodeJs({
           connectTimeout: getLitConnectTimeout(),
           litNetwork: getLitNetworkValue(),
@@ -172,6 +198,7 @@ export async function handleLitEncryptRequest(rawBody) {
   }
 
   const litNodeClient = await getLitServerClient();
+  const encryptToJson = await loadEncryptToJson();
   const unifiedAccessControlConditions = buildSignalAccessControlConditions(
     signalId,
     authorAddress,

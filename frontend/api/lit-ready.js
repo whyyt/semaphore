@@ -1,5 +1,4 @@
 import { applyCors } from "../server/cors.js";
-import { handleLitReadyRequest } from "../server/lit.js";
 
 export default async function handler(request, response) {
   applyCors(request, response);
@@ -17,6 +16,7 @@ export default async function handler(request, response) {
   }
 
   try {
+    const { handleLitReadyRequest } = await import("../server/lit.js");
     const payload = await handleLitReadyRequest();
 
     response.status(200).json(payload);

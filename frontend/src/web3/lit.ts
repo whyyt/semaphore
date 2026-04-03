@@ -11,7 +11,7 @@ import { getEncryptedSignalContent, type EncryptedSignalJsonPayload } from "./co
 import { APP_URL } from "./deployment";
 
 const LIT_CHAIN = "fuji";
-const DEFAULT_LIT_NETWORK = import.meta.env.DEV ? "datil-dev" : "datil-test";
+const DEFAULT_LIT_NETWORK = "datil-dev";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 export const PENDING_ENCRYPTED_CONTENT_CID = "pending-encrypted-content";
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
