@@ -14,6 +14,7 @@ interface AppStateContextValue {
   authorizeAnswer: (answerId: number) => Promise<void>;
   submitResponse: (signalId: string, content: string) => Promise<void>;
   submitEcho: (signalId: string, destination: "private" | "public", content: string) => Promise<void>;
+  unlockInviteReply: (inviteId: number) => void;
   toggleInviteReplying: (inviteId: number) => void;
   setInviteReplyType: (inviteId: number, replyType: InviteReplyType) => void;
   setInviteReplyText: (inviteId: number, text: string) => void;

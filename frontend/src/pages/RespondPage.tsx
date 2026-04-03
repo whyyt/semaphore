@@ -7,7 +7,8 @@ export function RespondPage() {
   const navigate = useNavigate();
   const { signalId } = useParams();
   const { state, submitResponse } = useAppState();
-  const signal = state.networkSignals.find((item) => item.id === signalId);
+  const availableSignals = state.accessibleSignals.length ? state.accessibleSignals : state.networkSignals;
+  const signal = availableSignals.find((item) => item.id === signalId);
   const [content, setContent] = useState("");
   const [isSealing, setIsSealing] = useState(false);
   const [stage, setStage] = useState<"writing" | "waiting">("writing");

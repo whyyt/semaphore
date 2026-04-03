@@ -6,6 +6,58 @@ import { SignalCorridor } from "../components/sections/SignalCorridor";
 import { Button } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useAppState } from "../state/useAppState";
+import { PublicEchoRecord, SignalRecord } from "../types/domain";
+
+function collectDescendantSignals(rootSignalId: string, signals: SignalRecord[]) {
+  const childrenByParentId = new Map<string, SignalRecord[]>();
+
+  signals
+    .filter((signal) => signal.parentId)
+    .sort((left, right) => left.createdAt - right.createdAt)
+    .forEach((signal) => {
+      if (!signal.parentId) {
+        return;
+      }
+
+      const siblings = childrenByParentId.get(signal.parentId) ?? [];
+      siblings.push(signal);
+      childrenByParentId.set(signal.parentId, siblings);
+    });
+
+  const visited = new Set<string>([rootSignalId]);
+
+  function walk(parentId: string): SignalRecord[] {
+    const children = childrenByParentId.get(parentId) ?? [];
+
+    return children.flatMap((child) => {
+      if (visited.has(child.id)) {
+        return [];
+      }
+
+      visited.add(child.id);
+
+      return [{ ...child, focusType: "derived" as const }, ...walk(child.id)];
+    });
+  }
+
+  return walk(rootSignalId);
+}
+
+function buildPublicEchoMap(signals: SignalRecord[], publicEchoes: PublicEchoRecord[]) {
+  const signalIds = new Set(signals.map((signal) => signal.id));
+
+  return publicEchoes.reduce<Record<string, PublicEchoRecord[]>>((accumulator, echo) => {
+    if (!signalIds.has(echo.signalId)) {
+      return accumulator;
+    }
+
+    const existing = accumulator[echo.signalId] ?? [];
+    existing.push(echo);
+    accumulator[echo.signalId] = existing;
+    return accumulator;
+  }, {});
+}
+
 export function SignalDetailPage() {
   const corridorRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledToCorridor = useRef(false);
@@ -13,7 +65,8 @@ export function SignalDetailPage() {
   const navigate = useNavigate();
   const { signalId } = useParams();
   const { state, markSignalViewed } = useAppState();
-  const signal = state.networkSignals.find((item) => item.id === signalId);
+  const availableSignals = state.accessibleSignals.length ? state.accessibleSignals : state.networkSignals;
+  const signal = availableSignals.find((item) => item.id === signalId);
 
   useEffect(() => {
     if (location.state?.focusSection !== "corridor" || hasScrolledToCorridor.current) {
@@ -40,10 +93,13 @@ export function SignalDetailPage() {
   }
 
   const currentSignal = signal;
-  const corridorSignals = [{ ...currentSignal, focusType: "focused" as const }];
-  const publicEchoes = state.publicEchoes
-    .filter((echo) => echo.signalId === currentSignal.id)
-    .sort((left, right) => right.ts - left.ts);
+  const descendantSignals = collectDescendantSignals(currentSignal.id, availableSignals);
+  const corridorSignals = [{ ...currentSignal, focusType: "focused" as const }, ...descendantSignals];
+  const publicEchoesBySignalId = buildPublicEchoMap(corridorSignals, state.publicEchoes);
+  Object.values(publicEchoesBySignalId).forEach((echoes) => echoes.sort((left, right) => right.ts - left.ts));
+  const hasCorridorContent =
+    descendantSignals.length > 0 ||
+    Object.values(publicEchoesBySignalId).some((echoes) => echoes.length > 0);
   const walletAddress = state.session.walletAddress?.toLowerCase() ?? null;
   const isAuthor = walletAddress === currentSignal.authorAddress.toLowerCase();
   const isPendingSignal = currentSignal.blockHeight === "pending";
@@ -146,13 +202,13 @@ export function SignalDetailPage() {
             <div className="mt-8 flex flex-wrap gap-3">{renderPrimaryActions()}</div>
           </Panel>
 
-          {publicEchoes.length ? (
+          {hasCorridorContent ? (
             <div ref={corridorRef}>
               <div className="mb-3 text-center text-[10px] uppercase tracking-[0.5em] text-[var(--text-muted)]">
                 The Chain Corridor
               </div>
               <SignalCorridor
-                focusedPublicEchoes={publicEchoes}
+                publicEchoesBySignalId={publicEchoesBySignalId}
                 signals={corridorSignals}
                 onSelect={(nextSignalId) => navigate(`/signals/${nextSignalId}`)}
               />

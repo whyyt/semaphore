@@ -49,6 +49,7 @@ export function savePrivateSignal(address: string, input: ComposeInput) {
   const nextSignal: OwnedSignalRecord = {
     blockNumber: 0,
     content: stripHtml(input.contentHtml) || input.hook,
+    contentHtml: input.contentHtml,
     id: -Date.now(),
     linked: 0,
     replies: 0,

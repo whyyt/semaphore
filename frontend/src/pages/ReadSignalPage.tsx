@@ -13,7 +13,8 @@ export function ReadSignalPage() {
   const { signalId } = useParams();
   const { state, submitEcho } = useAppState();
   const { data: walletClient } = useWalletClient();
-  const signal = state.networkSignals.find((item) => item.id === signalId);
+  const availableSignals = state.accessibleSignals.length ? state.accessibleSignals : state.networkSignals;
+  const signal = availableSignals.find((item) => item.id === signalId);
   const [stage, setStage] = useState<"floating" | "exploding" | "reading">("floating");
   const [echoText, setEchoText] = useState("");
   const [isWriting, setIsWriting] = useState(false);

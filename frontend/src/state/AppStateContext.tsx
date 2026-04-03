@@ -147,14 +147,31 @@ function insertOptimisticSignal(
           ),
         ].sort((left, right) => right.createdAt - left.createdAt)
       : previous.networkSignals;
+  const nextAccessibleSignals = [
+    nextSignal,
+    ...previous.accessibleSignals.map((signal) =>
+      signal.id === input.parentId
+        ? {
+            ...signal,
+            childIds: signal.childIds.includes(next.signalId)
+              ? signal.childIds
+              : [...signal.childIds, next.signalId],
+            focusType: "mother" as const,
+          }
+        : signal,
+    ),
+  ].sort((left, right) => right.createdAt - left.createdAt);
 
   return {
     ...previous,
+    accessibleSignals: nextAccessibleSignals,
     networkSignals: nextNetworkSignals,
     ownSignals: [
       {
         blockNumber: 0,
         content: stripHtml(input.contentHtml) || input.hook,
+        contentHtml: input.contentHtml,
+        encryptedContentCID: next.encryptedCid,
         id: Number(next.signalId),
         linked: 0,
         replies: 0,
@@ -222,6 +239,7 @@ function mergeInviteUi(nextState: AppState, previousState: AppState) {
     previousState.invites.map((invite) => [
       invite.id,
       {
+        canReply: invite.canReply,
         replyText: invite.replyText,
         replyType: invite.replyType,
         replying: invite.replying,
@@ -512,7 +530,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!isConnected || !address || syncPending || state.networkSignals.length > 0) {
+    if (
+      !isConnected ||
+      !address ||
+      syncPending ||
+      state.accessibleSignals.length > 0 ||
+      state.networkSignals.length > 0
+    ) {
       return;
     }
 
@@ -542,6 +566,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     address,
     connector?.name,
     isConnected,
+    state.accessibleSignals.length,
     state.networkSignals.length,
     state.session.walletAddress,
     syncPending,
@@ -682,6 +707,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }));
   }
 
+  function unlockInviteReply(inviteId: number) {
+    setState((previous) => ({
+      ...previous,
+      invites: previous.invites.map((invite) =>
+        invite.id === inviteId ? { ...invite, canReply: true } : invite,
+      ),
+    }));
+  }
+
   function setInviteReplyType(inviteId: number, replyType: InviteReplyType) {
     setState((previous) => ({
       ...previous,
@@ -747,6 +781,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         authorizeAnswer,
         submitResponse,
         submitEcho,
+        unlockInviteReply,
         toggleInviteReplying,
         setInviteReplyType,
         setInviteReplyText,

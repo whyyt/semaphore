@@ -1,3 +1,5 @@
+import { KeyboardEvent, MouseEvent } from "react";
+
 import { Button } from "../ui/Button";
 import { GeneratedAvatar } from "../ui/GeneratedAvatar";
 import { Panel } from "../ui/Panel";
@@ -82,9 +84,11 @@ export function HubToast({ message, tone }: { message: string; tone: HubToastTon
 }
 
 export function HubSignalCard({
+  onOpen,
   onDelete,
   signal,
 }: {
+  onOpen: () => void;
   onDelete: () => void;
   signal: OwnedSignalRecord;
 }) {
@@ -95,8 +99,28 @@ export function HubSignalCard({
         ? "⧫ Arweave"
         : "◎ IPFS";
 
+  function handleDelete(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    onDelete();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    onOpen();
+  }
+
   return (
-    <Panel className="relative overflow-hidden p-4 pl-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(196,168,90,0.35)]">
+    <Panel
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+      className="relative cursor-pointer overflow-hidden p-4 pl-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(196,168,90,0.35)] focus:outline-none focus:ring-2 focus:ring-[rgba(196,168,90,0.35)]"
+    >
       <div className="absolute bottom-0 left-0 top-0 w-[2px] bg-gradient-to-b from-[var(--signal)] to-transparent" />
       <p className="font-display text-sm leading-7 text-[var(--text-secondary)]">
         {signal.content.slice(0, 120)}
@@ -117,7 +141,7 @@ export function HubSignalCard({
           </span>
           <button
             type="button"
-            onClick={onDelete}
+            onClick={handleDelete}
             className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-all duration-200 hover:border-[rgba(239,68,68,0.35)] hover:text-[#EF4444]"
           >
             ✕ 删除
@@ -180,12 +204,14 @@ export function HubAnswerCard({
 
 export function HubInviteCard({
   invite,
+  onRead,
   onReplyText,
   onReplyType,
   onSubmit,
   onToggle,
 }: {
   invite: InviteRecord;
+  onRead?: () => void;
   onReplyText: (value: string) => void;
   onReplyType: (replyType: InviteReplyType) => void;
   onSubmit: () => void;
@@ -202,6 +228,7 @@ export function HubInviteCard({
             </div>
             <div className="text-[9px] text-[var(--text-muted)]">{formatDateLabel(invite.ts)} 发出邀请</div>
           </div>
+          {invite.accessExpiresAt ? <HubCountdownBadge endTime={invite.accessExpiresAt} /> : null}
           <span className="rounded-full border border-[rgba(196,168,90,0.35)] bg-[rgba(196,168,90,0.1)] px-2 py-1 text-[9px] text-[var(--signal)]">
             邀请
           </span>
@@ -213,13 +240,25 @@ export function HubInviteCard({
         <p className="font-display text-sm leading-7 text-[var(--text-secondary)]">{invite.excerpt}</p>
 
         <div className="mt-4 flex gap-2">
-          <Button variant={invite.replying ? "violet" : "amber"} className="w-full" onClick={onToggle}>
-            {invite.replying ? "▲ 收起" : "↩ 回复邀请"}
-          </Button>
+          {invite.canRead && onRead ? (
+            <Button variant="green" className="flex-1" onClick={onRead}>
+              ✓ 先看正文
+            </Button>
+          ) : null}
+          {invite.canReply === false ? null : (
+            <Button variant={invite.replying ? "violet" : "amber"} className="flex-1" onClick={onToggle}>
+              {invite.replying ? "▲ 收起" : "↩ 回复邀请"}
+            </Button>
+          )}
         </div>
+        {invite.canRead && invite.canReply === false ? (
+          <div className="mt-3 text-[10px] leading-6 text-[var(--text-muted)]">
+            先进入正文阅读，回来后这里会开放回复。
+          </div>
+        ) : null}
       </div>
 
-      {invite.replying ? (
+      {invite.replying && invite.canReply !== false ? (
         <div className="border-t border-[var(--line)] bg-[rgba(24,24,42,0.9)] p-4">
           <div className="mb-3 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
             选择回复方式

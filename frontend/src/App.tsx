@@ -6,6 +6,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { PersonalHubPage } from "./pages/PersonalHubPage";
 import { ComposePage } from "./pages/ComposePage";
+import { OwnedSignalReadPage } from "./pages/OwnedSignalReadPage";
 import { ReadSignalPage } from "./pages/ReadSignalPage";
 import { RespondPage } from "./pages/RespondPage";
 import { SignalDetailPage } from "./pages/SignalDetailPage";
@@ -125,6 +126,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PersonalHubPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/me/signals/:ownedSignalId"
+            element={
+              <ProtectedRoute>
+                <OwnedSignalReadPage />
               </ProtectedRoute>
             }
           />

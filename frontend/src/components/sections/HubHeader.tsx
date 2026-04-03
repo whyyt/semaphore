@@ -17,7 +17,6 @@ interface HubTabsProps {
 }
 
 interface HubSectionHeaderProps {
-  count: number;
   icon: string;
   label: string;
   tone?: "resonance" | "signal";
@@ -89,27 +88,18 @@ export function HubTabs({ activeTab, counts, onSelect }: HubTabsProps) {
 }
 
 export function HubSectionHeader({
-  count,
   icon,
   label,
   tone = "signal",
 }: HubSectionHeaderProps) {
-  const badgeTone =
-    tone === "resonance"
-      ? "border-[rgba(155,127,212,0.35)] bg-[rgba(155,127,212,0.12)] text-[var(--resonance)]"
-      : "border-[rgba(196,168,90,0.35)] bg-[rgba(196,168,90,0.1)] text-[var(--signal)]";
-
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <span className={tone === "resonance" ? "text-[var(--resonance)]" : "text-[var(--signal)]"}>
-          {icon}
-        </span>
-        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
-          {label}
-        </span>
-      </div>
-      <span className={`rounded-full border px-2 py-1 text-[9px] ${badgeTone}`}>{count}</span>
+    <div className="flex items-center gap-2">
+      <span className={tone === "resonance" ? "text-[var(--resonance)]" : "text-[var(--signal)]"}>
+        {icon}
+      </span>
+      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
+        {label}
+      </span>
     </div>
   );
 }

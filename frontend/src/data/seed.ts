@@ -20,6 +20,7 @@ export function createInitialState(): AppState {
       requestedInvite: false,
       signatureVerified: false,
     },
+    accessibleSignals: [],
     networkSignals: [],
     ownSignals: [],
     answers: [],

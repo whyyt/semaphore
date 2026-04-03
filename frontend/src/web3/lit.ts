@@ -13,6 +13,7 @@ import { resolveSemaphoreProtocolAddress } from "./deployment";
 const LIT_CHAIN = "fuji";
 const DEFAULT_LIT_NETWORK = "datil-test";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
+const PENDING_ENCRYPTED_CONTENT_CID = "pending-encrypted-content";
 const SIGNAL_CONTENT_VERSION = 1;
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
 
@@ -261,10 +262,18 @@ export async function decryptSignalContent(
     encryptedCid: string;
   },
 ) {
+  if (params.encryptedCid === PENDING_ENCRYPTED_CONTENT_CID) {
+    throw new Error(
+      "作者这条私密正文还没有成功上传。链上目前仍是占位内容，所以现在无法读取；需要作者重新发布，或由作者补传加密正文后才能打开。",
+    );
+  }
+
   const encryptedDocument = await getEncryptedSignalContent(params.encryptedCid);
 
   if (!encryptedDocument || encryptedDocument.kind !== "signal-private-encrypted") {
-    throw new Error("还没有找到这条信号的加密正文。");
+    throw new Error(
+      "还没有找到这条信号的加密正文。可能是 IPFS 内容尚未上传成功，或作者发布时停在了中间状态。",
+    );
   }
 
   const litNodeClient = await getLitClient();

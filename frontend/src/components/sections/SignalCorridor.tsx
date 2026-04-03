@@ -4,13 +4,13 @@ import { truncateAddress } from "../../lib/format";
 import { PublicEchoRecord, SignalRecord } from "../../types/domain";
 
 interface SignalCorridorProps {
-  focusedPublicEchoes?: PublicEchoRecord[];
+  publicEchoesBySignalId?: Record<string, PublicEchoRecord[]>;
   signals: SignalRecord[];
   onSelect: (signalId: string) => void;
 }
 
 export function SignalCorridor({
-  focusedPublicEchoes = [],
+  publicEchoesBySignalId = {},
   signals,
   onSelect,
 }: SignalCorridorProps) {
@@ -56,6 +56,7 @@ export function SignalCorridor({
         {signals.map((signal) => {
           const isInitial = !hasMoved && signal.focusType === "focused";
           const isActive = isInitial || hoveredId === signal.id || proximityId === signal.id;
+          const publicEchoes = publicEchoesBySignalId[signal.id] ?? [];
           const typeLabel =
             signal.focusType === "mother" ? "母" : signal.focusType === "focused" ? "焦点" : "衍生";
 
@@ -115,9 +116,9 @@ export function SignalCorridor({
                 </div>
               </div>
 
-              {signal.focusType === "focused" && focusedPublicEchoes.length ? (
+              {publicEchoes.length ? (
                 <div className="mx-auto w-[82%] space-y-4">
-                  {focusedPublicEchoes.map((echo) => (
+                  {publicEchoes.map((echo) => (
                     <div
                       key={echo.id}
                       className={

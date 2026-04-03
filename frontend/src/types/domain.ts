@@ -60,6 +60,8 @@ export interface OwnedSignalRecord {
   sourceSignalId?: string;
   title?: string;
   content: string;
+  contentHtml?: string;
+  encryptedContentCID?: string;
   ts: number;
   blockNumber: number;
   storage: "arweave" | "ipfs" | "local";
@@ -90,6 +92,9 @@ export interface InviteRecord {
   article: string;
   excerpt: string;
   ts: number;
+  accessExpiresAt?: number | null;
+  canRead?: boolean;
+  canReply?: boolean;
   replying: boolean;
   replyType: InviteReplyType | null;
   replyText: string;
@@ -127,6 +132,7 @@ export interface ComposeInput {
 
 export interface AppState {
   session: SessionState;
+  accessibleSignals: SignalRecord[];
   networkSignals: SignalRecord[];
   ownSignals: OwnedSignalRecord[];
   answers: AnswerRecord[];

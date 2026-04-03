@@ -41,6 +41,7 @@ export function PersonalHubPage() {
     setInviteReplyText,
     setInviteReplyType,
     submitInviteReply,
+    unlockInviteReply,
     toggleInviteReplying,
   } = useAppState();
   const requestedTab = asTab(searchParams.get("tab"));
@@ -51,8 +52,12 @@ export function PersonalHubPage() {
 
   const walletAddress = state.session.walletAddress ?? "";
   const profileLabel = formatWalletLabel(walletAddress, state.session.walletName ?? "已连接钱包");
-  const totalResonances = state.ownSignals.reduce((sum, signal) => sum + signal.resonances, 0);
-  const authorizedCount = state.answers.filter((answer) => answer.status === "authorized").length;
+  const tabCounts = {
+    signals: state.ownSignals.length,
+    answers: state.answers.length,
+    invites: state.invites.filter((invite) => !invite.submitted).length,
+    gifts: state.gifts.length,
+  };
 
   function showToast(message: string, tone: HubToastTone = "amber") {
     setToast({ message, tone });
@@ -84,7 +89,7 @@ export function PersonalHubPage() {
   function handleSubmitInvite(inviteId: number) {
     const invite = state.invites.find((item) => item.id === inviteId);
 
-    if (!invite?.replyType || !invite.replyText.trim()) {
+    if (!invite || invite.canReply === false || !invite.replyType || !invite.replyText.trim()) {
       return;
     }
 
@@ -128,7 +133,6 @@ export function PersonalHubPage() {
   const visibleInvites = focusedSignalId
     ? state.invites.filter((invite) => invite.signalId === focusedSignalId && !invite.submitted)
     : state.invites.filter((invite) => !invite.submitted);
-  const inviteCount = visibleInvites.length;
 
   return (
     <PrototypeAppShell activeTab="hub">
@@ -136,20 +140,20 @@ export function PersonalHubPage() {
         <HubProfileCard profileLabel={profileLabel} walletAddress={walletAddress} />
         <HubTabs
           activeTab={activeTab}
-          counts={{
-            signals: state.ownSignals.length,
-            answers: totalResonances,
-            invites: authorizedCount,
-            gifts: state.gifts.length,
-          }}
+          counts={tabCounts}
           onSelect={selectTab}
         />
 
         {activeTab === "signals" ? (
           <section className="space-y-4">
-            <HubSectionHeader icon="✦" label="发出的信号弹" count={state.ownSignals.length} />
+            <HubSectionHeader icon="✦" label="发出的信号弹" />
             {state.ownSignals.map((signal) => (
-              <HubSignalCard key={signal.id} signal={signal} onDelete={() => setDeleteTarget(signal)} />
+              <HubSignalCard
+                key={signal.id}
+                signal={signal}
+                onOpen={() => navigate(`/me/signals/${signal.id}`)}
+                onDelete={() => setDeleteTarget(signal)}
+              />
             ))}
             {!state.ownSignals.length ? (
               <HubEmptyState
@@ -162,12 +166,7 @@ export function PersonalHubPage() {
 
         {activeTab === "answers" ? (
           <section className="space-y-4">
-            <HubSectionHeader
-              icon="◎"
-              label="收到的回答"
-              count={visibleAnswers.length}
-              tone="resonance"
-            />
+            <HubSectionHeader icon="◎" label="收到的回答" tone="resonance" />
             {visibleAnswers.map((answer) => (
               <HubAnswerCard
                 key={answer.id}
@@ -193,11 +192,15 @@ export function PersonalHubPage() {
 
         {activeTab === "invites" ? (
           <section className="space-y-4">
-            <HubSectionHeader icon="◈" label="待处理邀请" count={inviteCount} />
+            <HubSectionHeader icon="◈" label="待处理邀请" />
             {visibleInvites.map((invite) => (
               <HubInviteCard
                 key={invite.id}
                 invite={invite}
+                onRead={() => {
+                  unlockInviteReply(invite.id);
+                  navigate(`/signals/${invite.signalId}/read`);
+                }}
                 onToggle={() => toggleInviteReplying(invite.id)}
                 onReplyType={(replyType) => setInviteReplyType(invite.id, replyType)}
                 onReplyText={(value) => setInviteReplyText(invite.id, value)}
@@ -215,7 +218,7 @@ export function PersonalHubPage() {
 
         {activeTab === "gifts" ? (
           <section className="space-y-4">
-            <HubSectionHeader icon="♦" label="礼物 · 阅后感" count={state.gifts.length} />
+            <HubSectionHeader icon="♦" label="礼物 · 阅后感" />
             {state.gifts.map((gift) => (
               <HubGiftCard key={gift.id} gift={gift} />
             ))}

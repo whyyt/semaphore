@@ -117,6 +117,14 @@ type LoadedEchoRecord = {
   ts: number;
 };
 
+type ViewerResponseEntry = {
+  accessExpiresAt: number | null;
+  approved: boolean;
+  createdAt: number;
+  id: number;
+  signalId: string;
+};
+
 const publicClient = createPublicClient({
   chain: seamphoreChain,
   transport: http(FUJI_RPC_URL),
@@ -327,6 +335,7 @@ async function loadSignals(viewerAddress: string | null, protocolAddress: Addres
   );
 
   const readableById = new Map<string, boolean>();
+  const viewerResponses: ViewerResponseEntry[] = [];
   const viewerResponseStateBySignal = new Map<
     string,
     {
@@ -344,30 +353,26 @@ async function loadSignals(viewerAddress: string | null, protocolAddress: Addres
       functionName: "getResponsesByReader",
     })) as bigint[];
 
-    const viewerResponses = (await Promise.all(
-      viewerResponseIds.map(async (responseId) => {
-        const response = (await publicClient.readContract({
-          abi: protocolAbi,
-          address: protocolAddress,
-          args: [responseId],
-          functionName: "getResponse",
-        })) as ContractResponseView;
+    viewerResponses.push(
+      ...((await Promise.all(
+        viewerResponseIds.map(async (responseId) => {
+          const response = (await publicClient.readContract({
+            abi: protocolAbi,
+            address: protocolAddress,
+            args: [responseId],
+            functionName: "getResponse",
+          })) as ContractResponseView;
 
-        return {
-          accessExpiresAt: response.approved ? Number(response.accessExpiresAt) * 1000 : null,
-          approved: response.approved,
-          createdAt: Number(response.createdAt),
-          id: Number(response.id),
-          signalId: response.signalId.toString(),
-        };
-      }),
-    )) as Array<{
-      accessExpiresAt: number | null;
-      approved: boolean;
-      createdAt: number;
-      id: number;
-      signalId: string;
-    }>;
+          return {
+            accessExpiresAt: response.approved ? Number(response.accessExpiresAt) * 1000 : null,
+            approved: response.approved,
+            createdAt: Number(response.createdAt),
+            id: Number(response.id),
+            signalId: response.signalId.toString(),
+          };
+        }),
+      )) as ViewerResponseEntry[]),
+    );
 
     viewerResponses.forEach((response) => {
       const current = viewerResponseStateBySignal.get(response.signalId);
@@ -454,8 +459,47 @@ async function loadSignals(viewerAddress: string | null, protocolAddress: Addres
 
   return {
     byId,
+    accessibleSignals: mappedSignals,
     networkSignals: mappedSignals.filter((signal) => signal.visibility === "public"),
     rawById,
+    viewerResponses,
+  };
+}
+
+async function loadInviteRecord(
+  invite: ContractReadInviteView,
+  byId: Map<string, SignalRecord>,
+): Promise<InviteRecord | null> {
+  if (invite.replied) {
+    return null;
+  }
+
+  const relatedSignal = byId.get(invite.signalId.toString());
+  const source = Number(invite.source) === 1 ? "granted-access" : "direct-invite";
+  const excerptContent =
+    source === "granted-access" ? null : await getStoredContent(invite.excerptCID);
+
+  return {
+    accessExpiresAt: source === "granted-access" ? relatedSignal?.accessExpiresAt ?? null : null,
+    article: relatedSignal?.title ?? "未知信号弹",
+    canRead: source === "granted-access",
+    canReply: source !== "granted-access",
+    ens: null,
+    excerpt:
+      source === "granted-access"
+        ? "这道门已经为你打开。读完之后，把回响留给作者、留在文章下，或继续发出你的信号弹。"
+        : excerptContent?.kind === "text"
+          ? excerptContent.text
+          : "你收到了一份新的阅读邀请。",
+    from: invite.from,
+    id: Number(invite.id),
+    replyText: "",
+    replyType: null,
+    replying: false,
+    signalId: invite.signalId.toString(),
+    source,
+    submitted: false,
+    ts: Number(invite.createdAt),
   };
 }
 
@@ -682,7 +726,10 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
   try {
     const viewerAddress = session.walletAddress;
     const protocolAddress = await resolveActiveProtocolAddress();
-    const { byId, networkSignals, rawById } = await loadSignals(viewerAddress, protocolAddress);
+    const { accessibleSignals, byId, networkSignals, rawById, viewerResponses } = await loadSignals(
+      viewerAddress,
+      protocolAddress,
+    );
     const ownSignals: AppState["ownSignals"] = [];
     const answers: AppState["answers"] = [];
     const invites: AppState["invites"] = [];
@@ -754,6 +801,8 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
           ownSignals.push({
             blockNumber: Number(rawSignal.blockNumber),
             content: stripHtml(signal.contentHtml) || signal.hook,
+            contentHtml: signal.contentHtml,
+            encryptedContentCID: signal.encryptedContentCID,
             id: Number(signal.id),
             linked: signal.childIds.length,
             replies: rawSignal.responseIds.length,
@@ -822,37 +871,76 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
             functionName: "getReadInvite",
           })) as ContractReadInviteView;
 
-          const relatedSignal = byId.get(invite.signalId.toString());
-          const excerptContent = await getStoredContent(invite.excerptCID);
-          const source = Number(invite.source) === 1 ? "granted-access" : "direct-invite";
-
-          return invite.replied
-            ? null
-            : ({
-                article: relatedSignal?.title ?? "未知信号弹",
-                ens: null,
-                excerpt:
-                  source === "granted-access"
-                    ? "这道门已经为你打开。读完之后，把回响留给作者、留在文章下，或继续发出你的信号弹。"
-                    : excerptContent?.kind === "text"
-                    ? excerptContent.text
-                    : "你收到了一份新的阅读邀请。",
-                from: invite.from,
-                id: Number(invite.id),
-                replyText: "",
-                replyType: null,
-                replying: false,
-                signalId: invite.signalId.toString(),
-                source,
-                submitted: false,
-                ts: Number(invite.createdAt),
-              } as InviteRecord);
+          return loadInviteRecord(invite, byId);
         }),
       ))
         .filter((invite): invite is InviteRecord => invite !== null)
         .sort((left, right) => right.ts - left.ts);
 
-      invites.push(...directInviteEntries);
+      const loadedInviteIds = new Set(directInviteEntries.map((invite) => invite.id));
+      const accessGrantFallbackEntries = (await Promise.all(
+        viewerResponses
+          .filter(
+            (response) => response.approved && (response.accessExpiresAt ?? 0) > Date.now(),
+          )
+          .map(async (response) => {
+            const relatedSignal = byId.get(response.signalId);
+
+            if (!relatedSignal) {
+              return null;
+            }
+
+            const linkedInviteId = Number((await publicClient.readContract({
+              abi: protocolAbi,
+              address: protocolAddress,
+              args: [BigInt(response.id)],
+              functionName: "getInviteIdForResponse",
+            })) as bigint);
+
+            if (linkedInviteId > 0) {
+              if (loadedInviteIds.has(linkedInviteId)) {
+                return null;
+              }
+
+              const invite = (await publicClient.readContract({
+                abi: protocolAbi,
+                address: protocolAddress,
+                args: [BigInt(linkedInviteId)],
+                functionName: "getReadInvite",
+              })) as ContractReadInviteView;
+
+              const inviteRecord = await loadInviteRecord(invite, byId);
+
+              if (inviteRecord) {
+                loadedInviteIds.add(inviteRecord.id);
+              }
+
+              return inviteRecord;
+            }
+
+            return {
+              accessExpiresAt: response.accessExpiresAt,
+              article: relatedSignal.title,
+              canRead: true,
+              canReply: false,
+              ens: null,
+              excerpt: "这道门已经为你打开。现在可以直接进入阅读。",
+              from: relatedSignal.authorAddress,
+              id: -response.id,
+              replyText: "",
+              replyType: null,
+              replying: false,
+              signalId: response.signalId,
+              source: "granted-access",
+              submitted: false,
+              ts: response.createdAt,
+            } as InviteRecord;
+          }),
+      ))
+        .filter((invite): invite is InviteRecord => invite !== null)
+        .sort((left, right) => right.ts - left.ts);
+
+      invites.push(...directInviteEntries, ...accessGrantFallbackEntries);
       gifts.push(
         ...echoEntries
           .filter((echo) => echo.destination === 0 && authoredSignalIds.has(echo.signalId))
@@ -870,6 +958,7 @@ export async function buildChainState(session: SessionState): Promise<AppState> 
     }
 
     return {
+      accessibleSignals,
       answers,
       gifts,
       invites,
