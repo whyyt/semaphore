@@ -192,22 +192,18 @@ async function buildLitClientOptions() {
 }
 
 async function getLitServerClient() {
-  if (!litClientPromise) {
-    litClientPromise = (async () => {
-      try {
-        const LitNodeClientNodeJs = await loadLitNodeClientNodeJs();
-        const litClient = new LitNodeClientNodeJs(await buildLitClientOptions());
-
-        await litClient.connect();
-        return litClient;
-      } catch (error) {
-        litClientPromise = null;
-        throw explainLitConnectionError(error);
-      }
-    })();
+  // serverless 环境每次都要重新连接
+  // 所以直接 new，不做缓存
+  try {
+    const LitNodeClientNodeJs = await loadLitNodeClientNodeJs();
+    const options = await buildLitClientOptions();
+    const litClient = new LitNodeClientNodeJs(options);
+    
+    await litClient.connect();
+    return litClient;
+  } catch (error) {
+    throw explainLitConnectionError(error);
   }
-
-  return litClientPromise;
 }
 
 function buildSignalAccessControlConditions(signalId, authorAddress) {
