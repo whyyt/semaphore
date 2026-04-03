@@ -68,7 +68,7 @@ function explainLitConnectionError(error: unknown): Error {
     message.includes("Could only connect to 0 of")
   ) {
     return new Error(
-      "无法连接 Lit 节点网络。你控制台里那些 `/web/handshake/` 超时或断开，大概率就是 Lit 节点握手失败；这不是 IPFS 读取错误。请刷新后重试；如果仍失败，可切换网络/VPN，或在 Vercel 中把 VITE_LIT_NETWORK 调整为更稳定的 Lit 网络，并适当增大 VITE_LIT_CONNECT_TIMEOUT_MS。",
+      "无法连接 Lit 节点网络。你控制台里那些 `/web/handshake/` 超时或断开，大概率就是 Lit 节点握手失败；这不是 IPFS 读取错误。若你使用的是按规则分流的代理而不是全局/TUN，Lit 这类直连裸 IP 的节点请求常常不会进代理。请先切到全局/TUN 或关闭代理后重试；如果仍失败，再考虑切换网络/VPN，或在 Vercel 中把 VITE_LIT_NETWORK 调整为更稳定的 Lit 网络，并适当增大 VITE_LIT_CONNECT_TIMEOUT_MS。",
     );
   }
 
