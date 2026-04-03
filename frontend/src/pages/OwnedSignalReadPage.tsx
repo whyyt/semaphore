@@ -7,7 +7,7 @@ import { Button } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { formatDateTimeLabel } from "../lib/format";
 import { useAppState } from "../state/useAppState";
-import { decryptSignalContent } from "../web3/lit";
+import { resolveSignalBodyFromChain } from "../web3/signalContent";
 
 export function OwnedSignalReadPage() {
   const navigate = useNavigate();
@@ -15,56 +15,74 @@ export function OwnedSignalReadPage() {
   const { state } = useAppState();
   const { data: walletClient } = useWalletClient();
   const signal = state.ownSignals.find((item) => item.id.toString() === ownedSignalId);
-  const [contentHtml, setContentHtml] = useState<string | null>(signal?.contentHtml ?? null);
-  const [decryptError, setDecryptError] = useState<string | null>(null);
-  const [isDecrypting, setIsDecrypting] = useState(false);
+  const sourceSignal = signal?.sourceSignalId
+    ? state.accessibleSignals.find((item) => item.id === signal.sourceSignalId)
+    : null;
+  const [contentHtml, setContentHtml] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [isReadingContent, setIsReadingContent] = useState(false);
 
   useEffect(() => {
-    setContentHtml(signal?.contentHtml ?? null);
-    setDecryptError(null);
-  }, [signal?.contentHtml, signal?.id]);
+    if (!signal) {
+      setContentHtml(null);
+      setReadError(null);
+      return;
+    }
+
+    if (signal.storage === "local") {
+      setContentHtml(signal.contentHtml ?? null);
+      setReadError(null);
+      setIsReadingContent(false);
+      return;
+    }
+
+    setContentHtml(null);
+    setReadError(null);
+  }, [signal]);
 
   useEffect(() => {
     if (
       !signal ||
-      signal.visibility !== "private" ||
       signal.storage === "local" ||
-      !signal.encryptedContentCID ||
-      !walletClient
+      (!signal.encryptedContentCID && !sourceSignal?.encryptedContentCID && !sourceSignal?.ipfsHash)
     ) {
       return;
     }
 
     let cancelled = false;
-    setIsDecrypting(true);
+    setIsReadingContent(true);
+    setContentHtml(null);
+    setReadError(null);
 
-    void decryptSignalContent(walletClient, {
-      encryptedCid: signal.encryptedContentCID,
+    void resolveSignalBodyFromChain({
+      encryptedContentCid: signal.encryptedContentCID ?? sourceSignal?.encryptedContentCID,
+      hintCid: sourceSignal?.ipfsHash,
+      walletClient,
     })
       .then((nextContentHtml) => {
         if (cancelled) {
           return;
         }
 
-        setContentHtml(nextContentHtml);
+        setContentHtml(nextContentHtml.contentHtml);
       })
       .catch((error) => {
         if (cancelled) {
           return;
         }
 
-        setDecryptError(error instanceof Error ? error.message : "正文解密失败，请重试。");
+        setReadError(error instanceof Error ? error.message : "正文读取失败，请重试。");
       })
       .finally(() => {
         if (!cancelled) {
-          setIsDecrypting(false);
+          setIsReadingContent(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [signal, walletClient]);
+  }, [signal, sourceSignal, walletClient]);
 
   if (!signal) {
     return <Navigate to="/me?tab=signals" replace />;
@@ -77,6 +95,7 @@ export function OwnedSignalReadPage() {
         ? "⧫ Arweave"
         : "◎ IPFS";
   const fallbackContent = signal.content.trim();
+  const shouldReadFromChain = signal.storage !== "local";
 
   return (
     <div className="min-h-screen">
@@ -105,12 +124,14 @@ export function OwnedSignalReadPage() {
                 className="semaphore-prose text-[var(--text-primary)]"
                 dangerouslySetInnerHTML={{ __html: contentHtml }}
               />
-            ) : isDecrypting ? (
-              <div className="text-sm leading-7 text-[var(--text-secondary)]">正在解开你的私密正文...</div>
-            ) : decryptError ? (
+            ) : isReadingContent ? (
+              <div className="text-sm leading-7 text-[var(--text-secondary)]">正在根据链上 CID 读取正文...</div>
+            ) : readError ? (
               <div className="rounded-3xl border border-red-800/40 bg-red-950/20 px-6 py-5 text-sm leading-7 text-red-200">
-                {decryptError}
+                {readError}
               </div>
+            ) : shouldReadFromChain ? (
+              <div className="text-sm leading-7 text-[var(--text-secondary)]">还没有读到这条信号的链上正文。</div>
             ) : (
               <div className="whitespace-pre-wrap text-sm leading-8 text-[var(--text-primary)]">
                 {fallbackContent}

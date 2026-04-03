@@ -13,18 +13,30 @@ import { SignalDetailPage } from "./pages/SignalDetailPage";
 import { SeamphoreThresholdPage } from "./pages/SeamphoreThresholdPage";
 import { persistLastVisitedRoute } from "./lib/lastVisitedRoute";
 import { useAppState } from "./state/useAppState";
-import { hasPersistedAuthSession } from "./lib/authSession";
+import { hasCompletedWelcome, hasPersistedAuthSession } from "./lib/authSession";
 
-function ProtectedRoute({ children }: { children: ReactElement }) {
+function ProtectedRoute({
+  allowBeforeWelcome = false,
+  children,
+}: {
+  allowBeforeWelcome?: boolean;
+  children: ReactElement;
+}) {
   const { address, isConnected } = useAccount();
   const { state, syncPending } = useAppState();
   const hasRestorableSession = isConnected && hasPersistedAuthSession(address ?? state.session.walletAddress);
+  const walletAddress = address ?? state.session.walletAddress;
+  const welcomeCompleted = hasCompletedWelcome(walletAddress);
   if (syncPending && hasRestorableSession && !state.session.inviteVerified) {
     return <Navigate to="/onboarding" replace />;
   }
 
   if (!state.session.inviteVerified || !state.session.signatureVerified) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  if (!allowBeforeWelcome && !welcomeCompleted) {
+    return <Navigate to="/threshold" replace />;
   }
 
   return children;
@@ -49,12 +61,13 @@ function RouteMemory() {
 function RootRedirect() {
   const { state } = useAppState();
   const isAuthenticated = state.session.inviteVerified && state.session.signatureVerified;
+  const welcomeCompleted = hasCompletedWelcome(state.session.walletAddress);
 
   if (!isAuthenticated) {
     return <OnboardingPage />;
   }
 
-  return <Navigate replace to="/discover" />;
+  return <Navigate replace to={welcomeCompleted ? "/discover" : "/threshold"} />;
 }
 
 export default function App() {
@@ -76,7 +89,7 @@ export default function App() {
           <Route
             path="/threshold"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowBeforeWelcome>
                 <SeamphoreThresholdPage />
               </ProtectedRoute>
             }

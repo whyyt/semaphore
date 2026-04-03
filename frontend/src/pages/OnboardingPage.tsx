@@ -5,7 +5,11 @@ import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
 import { BrandMark } from "../components/ui/BrandMark";
 import { useAppState } from "../state/useAppState";
 import { hasWalletConnectProjectId } from "../web3/rainbowkit";
-import { clearAuthSession, hasPersistedAuthSession, persistAuthSession } from "../lib/authSession";
+import {
+  clearAuthSession,
+  hasCompletedWelcome,
+  persistAuthSession,
+} from "../lib/authSession";
 
 type WalletOptionId = "metamask" | "walletconnect" | "coinbase";
 
@@ -212,7 +216,7 @@ export function OnboardingPage() {
   const walletName = state.session.walletName ?? connector?.name ?? "Wallet";
   const flowError = hasStartedFlow ? syncError ?? connectError : null;
   const currentWalletAddress = address ?? state.session.walletAddress ?? "";
-  const persistedSignatureVerified = hasPersistedAuthSession(currentWalletAddress);
+  const welcomeCompleted = hasCompletedWelcome(currentWalletAddress);
   const showSuccess = state.session.inviteVerified && state.session.signatureVerified;
   const showSigning = hasStartedFlow && !showSuccess;
   const connectedAddress = state.session.walletAddress ?? "";
@@ -289,16 +293,16 @@ export function OnboardingPage() {
   );
 
   useEffect(() => {
-    setHasSignedMessage(state.session.signatureVerified || persistedSignatureVerified);
-  }, [persistedSignatureVerified, state.session.signatureVerified]);
+    setHasSignedMessage(state.session.signatureVerified);
+  }, [state.session.signatureVerified]);
 
   useEffect(() => {
     if (!showSuccess || hasStartedFlow) {
       return;
     }
 
-    navigate("/discover", { replace: true });
-  }, [hasStartedFlow, navigate, showSuccess]);
+    navigate(welcomeCompleted ? "/discover" : "/threshold", { replace: true });
+  }, [hasStartedFlow, navigate, showSuccess, welcomeCompleted]);
 
   async function switchWallet() {
     try {
@@ -362,12 +366,6 @@ export function OnboardingPage() {
 
       if (!nextWalletAddress) {
         throw new Error("没有读取到钱包地址，请确认 MetaMask 已解锁。");
-      }
-
-      if (hasPersistedAuthSession(nextWalletAddress)) {
-        setHasSignedMessage(true);
-        retrySync();
-        return;
       }
 
       const nextSigningRequest = createSigningRequest(nextWalletAddress);

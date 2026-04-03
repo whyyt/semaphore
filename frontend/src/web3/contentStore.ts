@@ -41,7 +41,7 @@ export type EncryptedSignalPrivateContent = BaseContentDocument & {
   payload: EncryptedSignalJsonPayload;
 };
 
-type StoredContent =
+export type StoredContent =
   | EncryptedSignalPrivateContent
   | SignalCombinedContent
   | SignalPublicContent
@@ -206,6 +206,10 @@ async function fetchIpfsJson<T extends StoredContent>(cid: string): Promise<T | 
 
 export async function getStoredContent(cid: string) {
   return fetchIpfsJson<SignalCombinedContent | SignalPublicContent | TextContent>(cid);
+}
+
+export async function getContentDocument(cid: string) {
+  return fetchIpfsJson<StoredContent>(cid);
 }
 
 export async function getEncryptedSignalContent(cid: string) {

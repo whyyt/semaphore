@@ -2,6 +2,7 @@ const AUTH_SESSION_STORAGE_KEY = "seamphore-auth-session-v1";
 
 type PersistedAuthSession = {
   signedAt: string;
+  welcomeCompleted?: boolean;
   walletAddress: string;
 };
 
@@ -37,6 +38,7 @@ export function readAuthSession() {
 
     return {
       signedAt: parsed.signedAt,
+      welcomeCompleted: parsed.welcomeCompleted === true,
       walletAddress: parsed.walletAddress,
     };
   } catch {
@@ -65,10 +67,48 @@ export function persistAuthSession(walletAddress: string) {
 
   const nextSession: PersistedAuthSession = {
     signedAt: new Date().toISOString(),
+    welcomeCompleted: false,
     walletAddress,
   };
 
   window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+}
+
+export function hasCompletedWelcome(walletAddress: string | null | undefined) {
+  if (!walletAddress) {
+    return false;
+  }
+
+  const session = readAuthSession();
+
+  if (!session) {
+    return false;
+  }
+
+  return (
+    normalizeWalletAddress(session.walletAddress) === normalizeWalletAddress(walletAddress) &&
+    session.welcomeCompleted === true
+  );
+}
+
+export function markWelcomeCompleted(walletAddress: string) {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  const session = readAuthSession();
+
+  if (!session || normalizeWalletAddress(session.walletAddress) !== normalizeWalletAddress(walletAddress)) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    AUTH_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      ...session,
+      welcomeCompleted: true,
+    } satisfies PersistedAuthSession),
+  );
 }
 
 export function clearAuthSession() {

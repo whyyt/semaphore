@@ -2,8 +2,6 @@ import * as React from "react";
 
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
-import { BrandMark } from "./BrandMark";
-
 interface FloatingPoint {
   id: number;
   className: string;
@@ -14,8 +12,13 @@ interface FloatingPoint {
 
 export interface FloatingIconsHeroProps
   extends React.HTMLAttributes<HTMLElement> {
+  animateBrand?: boolean;
+  animateCta?: boolean;
+  animateTitle?: boolean;
   backgroundImageSrc?: string;
   title: string;
+  titleContent?: React.ReactNode;
+  titleImageSrc?: string;
   subtitle: string;
   ctaText: string;
   onCtaClick?: () => void;
@@ -28,6 +31,28 @@ const sizeClasses: Record<NonNullable<FloatingPoint["size"]>, string> = {
   md: "h-14 w-14",
   lg: "h-20 w-20",
 };
+
+function renderAnimatedCharacters(
+  text: string,
+  options: {
+    baseDelayMs: number;
+    className: string;
+    stepMs: number;
+  },
+) {
+  return Array.from(text).map((character, index) => (
+    <span
+      key={`${character}-${index}`}
+      aria-hidden="true"
+      className={cn("inline-block whitespace-pre", options.className)}
+      style={{
+        animationDelay: `${options.baseDelayMs + index * options.stepMs}ms`,
+      }}
+    >
+      {character === " " ? "\u00A0" : character}
+    </span>
+  ));
+}
 
 function GlowPoint({
   point,
@@ -87,6 +112,9 @@ function GlowPoint({
 }
 
 export function FloatingIconsHero({
+  animateBrand = true,
+  animateCta = true,
+  animateTitle = true,
   backgroundImageSrc,
   className,
   ctaHref,
@@ -95,6 +123,8 @@ export function FloatingIconsHero({
   points,
   subtitle,
   title,
+  titleContent,
+  titleImageSrc,
   ...props
 }: FloatingIconsHeroProps) {
   return (
@@ -125,22 +155,72 @@ export function FloatingIconsHero({
       </div>
 
       <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center text-center">
-        <div className="animate-threshold-brand-rise mb-8 flex items-center gap-3 opacity-0 [animation-delay:180ms]">
-          <BrandMark showText={false} size={36} />
-          <span className="font-display text-sm uppercase tracking-[0.42em] text-[var(--text-primary)]">
-            SEAMPHORE
+        {animateBrand ? (
+          <div className="animate-threshold-brand-rise mb-8 flex items-center gap-3 opacity-0 [animation-delay:180ms]">
+            <span className="font-display text-sm uppercase tracking-[0.42em] text-[var(--text-primary)]">
+              SEAMPHORE
+            </span>
+          </div>
+        ) : null}
+
+        {titleContent ? (
+          <div
+            className={cn(
+              animateTitle ? "animate-threshold-title-rise opacity-0 [animation-delay:420ms]" : "opacity-100",
+            )}
+          >
+            <span className="sr-only">{title}</span>
+            <div aria-hidden="true">{titleContent}</div>
+          </div>
+        ) : titleImageSrc ? (
+          <div
+            className={cn(
+              animateTitle ? "animate-threshold-title-rise opacity-0 [animation-delay:420ms]" : "opacity-100",
+            )}
+          >
+            <span className="sr-only">{title}</span>
+            <img
+              alt=""
+              aria-hidden="true"
+              src={titleImageSrc}
+              className="block h-auto w-[min(90vw,980px)] drop-shadow-[0_0_28px_rgba(196,168,90,0.16)]"
+            />
+          </div>
+        ) : (
+          <h1
+            className={cn(
+              "font-display text-[clamp(3.3rem,9vw,7.25rem)] leading-[0.95] tracking-[0.04em] text-[rgba(244,239,255,0.96)] drop-shadow-[0_0_24px_rgba(196,168,90,0.18)]",
+              animateTitle ? "animate-threshold-title-rise opacity-0 [animation-delay:420ms]" : "opacity-100",
+            )}
+          >
+            <span className="sr-only">{title}</span>
+            <span aria-hidden="true" className="inline-flex flex-wrap justify-center">
+              {renderAnimatedCharacters(title, {
+                baseDelayMs: 460,
+                className: "animate-threshold-title-letter",
+                stepMs: 58,
+              })}
+            </span>
+          </h1>
+        )}
+
+        <p className="mt-8 max-w-3xl text-base leading-8 text-[var(--text-secondary)] md:text-lg md:leading-9">
+          <span className="sr-only">{subtitle}</span>
+          <span aria-hidden="true">
+            {renderAnimatedCharacters(subtitle, {
+              baseDelayMs: 920,
+              className: "animate-threshold-copy-letter",
+              stepMs: 26,
+            })}
           </span>
-        </div>
-
-        <h1 className="animate-threshold-title-rise opacity-0 font-display text-[clamp(3.3rem,9vw,7.25rem)] leading-[0.95] tracking-[0.04em] text-transparent bg-[linear-gradient(180deg,rgba(244,239,255,0.98)_0%,rgba(232,228,240,0.7)_100%)] bg-clip-text [animation-delay:520ms]">
-          {title}
-        </h1>
-
-        <p className="animate-threshold-copy-rise mt-8 max-w-3xl opacity-0 text-base leading-8 text-[var(--text-secondary)] md:text-lg md:leading-9 [animation-delay:980ms]">
-          {subtitle}
         </p>
 
-        <div className="animate-threshold-cta-rise mt-12 opacity-0 [animation-delay:1480ms]">
+        <div
+          className={cn(
+            "mt-12",
+            animateCta ? "animate-threshold-cta-rise opacity-0 [animation-delay:1480ms]" : "opacity-100",
+          )}
+        >
           {onCtaClick ? (
             <Button
               onClick={onCtaClick}

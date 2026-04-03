@@ -13,7 +13,7 @@ import { resolveSemaphoreProtocolAddress } from "./deployment";
 const LIT_CHAIN = "fuji";
 const DEFAULT_LIT_NETWORK = "datil-test";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
-const PENDING_ENCRYPTED_CONTENT_CID = "pending-encrypted-content";
+export const PENDING_ENCRYPTED_CONTENT_CID = "pending-encrypted-content";
 const SIGNAL_CONTENT_VERSION = 1;
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
 

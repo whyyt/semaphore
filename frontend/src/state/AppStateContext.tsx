@@ -283,6 +283,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncPending, setSyncPending] = useState(false);
+  const [syncUnlocked, setSyncUnlocked] = useState(false);
   const autoRecoverKeyRef = useRef<string | null>(null);
   const chainSyncChannelRef = useRef<BroadcastChannel | null>(null);
   const lastConnectedAddressRef = useRef<string | null>(null);
@@ -329,13 +330,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   async function performWalletSync(next: {
     address: string | undefined;
     connectorName: string | undefined;
+    force?: boolean;
     isConnected: boolean;
     walletClient: typeof walletClient;
   }) {
+    if (!next.force && !syncUnlocked) {
+      return;
+    }
+
     if (!next.isConnected || !next.address) {
       autoRecoverKeyRef.current = null;
       setSyncError(null);
       setSyncPending(false);
+      setSyncUnlocked(false);
       setState(createRuntimeState());
       return;
     }
@@ -402,6 +409,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void performWalletSync({
       address,
       connectorName: connector?.name,
+      force: false,
       isConnected,
       walletClient,
     });
@@ -411,6 +419,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void performWalletSync({
       address,
       connectorName: connector?.name,
+      force: false,
       isConnected,
       walletClient,
     });
@@ -452,6 +461,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void performWalletSync({
       address,
       connectorName: connector?.name,
+      force: false,
       isConnected,
       walletClient,
     });
@@ -574,9 +584,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   ]);
 
   function retrySync() {
+    setSyncUnlocked(true);
     void performWalletSync({
       address,
       connectorName: connector?.name,
+      force: true,
       isConnected,
       walletClient,
     });

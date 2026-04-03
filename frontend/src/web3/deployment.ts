@@ -2,7 +2,7 @@ import { defineChain, getAddress, type Address } from "viem";
 
 export const FUJI_RPC_URL =
   import.meta.env.VITE_RPC_URL?.trim() || "https://api.avax-test.network/ext/bc/C/rpc";
-const DEFAULT_SEMAPHORE_PROTOCOL_ADDRESS = "0xCAa24d48a29d5091B67FCD75D2794F732c7cC657";
+const DEFAULT_SEMAPHORE_PROTOCOL_ADDRESS = "0xf38041633a68B25Efa4ed15181061d9b4844663F";
 
 function resolveAppUrl() {
   const configured = import.meta.env.VITE_APP_URL?.trim();

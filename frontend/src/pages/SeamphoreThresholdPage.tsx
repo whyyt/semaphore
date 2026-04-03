@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 
 import { FloatingIconsHero } from "../components/ui/floating-icons-hero-section";
+import { useAppState } from "../state/useAppState";
+import { markWelcomeCompleted } from "../lib/authSession";
 
 const HERO_POINTS = [
   { id: 1, className: "left-[7%] top-[10%]", size: "sm" as const, revealDelayMs: 120 },
@@ -19,14 +21,24 @@ const HERO_POINTS = [
 
 export function SeamphoreThresholdPage() {
   const navigate = useNavigate();
+  const { state } = useAppState();
 
   return (
     <FloatingIconsHero
+      animateBrand={false}
+      animateCta={false}
+      animateTitle={false}
       backgroundImageSrc="/1.png"
       title="Seamphore"
-      subtitle="写作者好像是安静地敲击键盘，其实她在虚拟的世界站在最高点向世界大声宣告着——我在这里，你在哪里。"
+      subtitle="作者好像是安静地敲击键盘，实际是在虚拟的世界大声地宣告着 —— 我在这里，你在哪里？"
       ctaText="点击打开seamphore"
-      onCtaClick={() => navigate("/discover", { replace: true })}
+      onCtaClick={() => {
+        if (state.session.walletAddress) {
+          markWelcomeCompleted(state.session.walletAddress);
+        }
+
+        navigate("/discover", { replace: true });
+      }}
       points={HERO_POINTS}
     />
   );

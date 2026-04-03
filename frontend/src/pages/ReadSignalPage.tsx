@@ -4,7 +4,7 @@ import { useWalletClient } from "wagmi";
 
 import { useCountdown } from "../hooks/useCountdown";
 import { useAppState } from "../state/useAppState";
-import { decryptSignalContent } from "../web3/lit";
+import { resolveSignalBodyFromChain } from "../web3/signalContent";
 
 type RitualType = "crane" | "star" | null;
 
@@ -20,8 +20,8 @@ export function ReadSignalPage() {
   const [isWriting, setIsWriting] = useState(false);
   const [ritualType, setRitualType] = useState<RitualType>(null);
   const [contentHtml, setContentHtml] = useState<string | null>(null);
-  const [decryptError, setDecryptError] = useState<string | null>(null);
-  const [decryptedCid, setDecryptedCid] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [isReadingContent, setIsReadingContent] = useState(false);
   const walletAddress = state.session.walletAddress?.toLowerCase() ?? null;
   const isAuthor = signal ? walletAddress === signal.authorAddress.toLowerCase() : false;
   const accessEndTime = signal && !isAuthor ? signal.accessExpiresAt : null;
@@ -52,19 +52,23 @@ export function ReadSignalPage() {
   }, [isAuthor, isExpired, navigate, signal, stage]);
 
   useEffect(() => {
-    if (!walletClient || !signal || !signal.encryptedContentCID || stage !== "reading") {
+    if (!signal || stage !== "reading") {
       return;
     }
 
     let cancelled = false;
+    setIsReadingContent(true);
+    setContentHtml(null);
+    setReadError(null);
 
-    void decryptSignalContent(walletClient, {
-      encryptedCid: signal.encryptedContentCID,
+    void resolveSignalBodyFromChain({
+      encryptedContentCid: signal.encryptedContentCID,
+      hintCid: signal.ipfsHash,
+      walletClient,
     })
       .then((nextContentHtml) => {
         if (!cancelled) {
-          setContentHtml(nextContentHtml);
-          setDecryptedCid(signal.encryptedContentCID);
+          setContentHtml(nextContentHtml.contentHtml);
         }
       })
       .catch((error) => {
@@ -72,8 +76,12 @@ export function ReadSignalPage() {
           return;
         }
 
-        setDecryptedCid(signal.encryptedContentCID);
-        setDecryptError(error instanceof Error ? error.message : "正文解密失败，请重试。");
+        setReadError(error instanceof Error ? error.message : "正文读取失败，请重试。");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsReadingContent(false);
+        }
       });
 
     return () => {
@@ -189,18 +197,18 @@ export function ReadSignalPage() {
             <h1 className="font-display text-center text-3xl tracking-[0.2em] text-[var(--text-primary)]">
               《{currentSignal.title}》
             </h1>
-            {contentHtml && decryptedCid === currentSignal.encryptedContentCID ? (
+            {contentHtml ? (
               <div
                 className="semaphore-prose"
                 dangerouslySetInnerHTML={{ __html: contentHtml }}
               />
-            ) : decryptError && decryptedCid === currentSignal.encryptedContentCID ? (
+            ) : readError ? (
               <div className="rounded-3xl border border-red-800/40 bg-red-950/20 px-6 py-5 text-sm leading-7 text-red-200">
-                {decryptError}
+                {readError}
               </div>
             ) : (
               <div className="rounded-3xl border border-[rgba(196,168,90,0.16)] bg-[rgba(196,168,90,0.05)] px-6 py-5 text-sm leading-7 text-[var(--text-secondary)]">
-                正在向 Lit 请求密钥并解开正文...
+                {isReadingContent ? "正在根据链上 CID 读取正文..." : "正在准备正文内容..."}
               </div>
             )}
           </main>
