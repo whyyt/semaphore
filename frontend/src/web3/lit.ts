@@ -3,18 +3,17 @@ import {
   createSiweMessage,
   generateAuthSig,
 } from "@lit-protocol/auth-helpers";
-import { decryptFromJson, encryptToJson } from "@lit-protocol/encryption";
+import { decryptFromJson } from "@lit-protocol/encryption";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { type WalletClient } from "viem";
 
 import { getEncryptedSignalContent, type EncryptedSignalJsonPayload } from "./contentStore";
-import { resolveSemaphoreProtocolAddress } from "./deployment";
+import { APP_URL } from "./deployment";
 
 const LIT_CHAIN = "fuji";
-const DEFAULT_LIT_NETWORK = "datil-test";
+const DEFAULT_LIT_NETWORK = import.meta.env.DEV ? "datil-dev" : "datil-test";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 export const PENDING_ENCRYPTED_CONTENT_CID = "pending-encrypted-content";
-const SIGNAL_CONTENT_VERSION = 1;
 const ACCESS_CONTROL_DECRYPTION_ABILITY = "access-control-condition-decryption";
 
 type SupportedLitNetwork = "datil-dev" | "datil-test" | "datil" | "custom";
@@ -85,7 +84,42 @@ function getWalletAccount(walletClient: WalletClient) {
   return account;
 }
 
-async function getLitClient() {
+async function postLitJson<T>(path: string, body?: unknown) {
+  let response: Response;
+  const requestUrl =
+    import.meta.env.DEV && APP_URL !== window.location.origin ? new URL(path, APP_URL).toString() : path;
+
+  try {
+    response = await fetch(requestUrl, {
+      body: body ? JSON.stringify(body) : "{}",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
+    throw explainLitConnectionError(error);
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: string;
+      }
+    | T
+    | null;
+
+  if (!response.ok) {
+    throw explainLitConnectionError(
+      payload && typeof payload === "object" && "error" in payload
+        ? new Error(payload.error ?? "Lit 服务暂时不可用。")
+        : new Error("Lit 服务暂时不可用。"),
+    );
+  }
+
+  return payload as T;
+}
+
+async function getBrowserLitClient() {
   if (!litClientPromise) {
     litClientPromise = (async () => {
       try {
@@ -107,14 +141,14 @@ async function getLitClient() {
 }
 
 export async function ensureLitReady() {
-  await getLitClient();
+  await postLitJson("/api/lit-ready");
 }
 
 async function getSessionSigs(
   walletClient: WalletClient,
   resourceAbilityRequests: ResourceAbilityRequest[],
 ) {
-  const litNodeClient = await getLitClient();
+  const litNodeClient = await getBrowserLitClient();
   const account = getWalletAccount(walletClient);
   const expiration = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
@@ -151,64 +185,6 @@ async function getSessionSigs(
   });
 }
 
-async function buildSignalAccessControlConditions(signalId: string, authorAddress: string) {
-  const protocolAddress = await resolveSemaphoreProtocolAddress();
-
-  return [
-    {
-      chain: LIT_CHAIN,
-      conditionType: "evmBasic" as const,
-      contractAddress: "",
-      method: "",
-      parameters: [":userAddress"],
-      returnValueTest: {
-        comparator: "=",
-        value: authorAddress,
-      },
-      standardContractType: "",
-    },
-    {
-      operator: "or",
-    },
-    {
-      chain: LIT_CHAIN,
-      conditionType: "evmContract" as const,
-      contractAddress: protocolAddress,
-      functionAbi: {
-        inputs: [
-          {
-            internalType: "uint256",
-            name: "signalId",
-            type: "uint256",
-          },
-          {
-            internalType: "address",
-            name: "reader",
-            type: "address",
-          },
-        ],
-        name: "hasActiveAccess",
-        outputs: [
-          {
-            internalType: "bool",
-            name: "",
-            type: "bool",
-          },
-        ],
-        stateMutability: "view",
-        type: "function",
-      },
-      functionName: "hasActiveAccess",
-      functionParams: [signalId, ":userAddress"],
-      returnValueTest: {
-        comparator: "=",
-        key: "",
-        value: "true",
-      },
-    },
-  ];
-}
-
 async function buildResourceAbilityRequests(
   payload: EncryptedSignalJsonPayload,
 ): Promise<ResourceAbilityRequest[]> {
@@ -236,28 +212,11 @@ export async function encryptSignalContent(
     signalId: string;
   },
 ) {
-  const litNodeClient = await getLitClient();
-  const unifiedAccessControlConditions = await buildSignalAccessControlConditions(
-    params.signalId,
-    params.authorAddress,
-  );
-  const encryptedJson = await encryptToJson({
-    chain: LIT_CHAIN,
-    litNodeClient,
-    string: JSON.stringify({
-      contentHtml: params.contentHtml,
-      version: SIGNAL_CONTENT_VERSION,
-    }),
-    unifiedAccessControlConditions,
-  });
+  const payload = await postLitJson<{
+    payload: EncryptedSignalJsonPayload;
+  }>("/api/lit-encrypt", params);
 
-  const parsedPayload = JSON.parse(encryptedJson) as EncryptedSignalJsonPayload;
-
-  if (parsedPayload.dataType !== "string") {
-    throw new Error("Lit 加密结果格式异常，请重试。");
-  }
-
-  return parsedPayload;
+  return payload.payload;
 }
 
 export async function decryptSignalContent(
@@ -280,7 +239,7 @@ export async function decryptSignalContent(
     );
   }
 
-  const litNodeClient = await getLitClient();
+  const litNodeClient = await getBrowserLitClient();
   const resourceAbilityRequests = await buildResourceAbilityRequests(encryptedDocument.payload);
   const sessionSigs = await getSessionSigs(walletClient, resourceAbilityRequests);
   const decrypted = await decryptFromJson({
