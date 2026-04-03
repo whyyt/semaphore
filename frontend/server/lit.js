@@ -1,6 +1,6 @@
 const LIT_CHAIN = "fuji";
 const DEFAULT_SEMAPHORE_PROTOCOL_ADDRESS = "0xf38041633a68B25Efa4ed15181061d9b4844663F";
-const DEFAULT_LIT_NETWORK = "datil-dev";
+const DEFAULT_LIT_NETWORK = "datil-test";
 const DEFAULT_LIT_RPC_URL = "https://yellowstone-rpc.litprotocol.com";
 const DEFAULT_LIT_CONNECT_TIMEOUT_MS = 60000;
 const SIGNAL_CONTENT_VERSION = 1;
