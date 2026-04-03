@@ -60,11 +60,15 @@ function explainLitConnectionError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
 
   if (
+    message.includes("Failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("ERR_CONNECTION_CLOSED") ||
+    message.includes("ERR_TIMED_OUT") ||
     message.includes("Could not handshake with nodes after timeout") ||
     message.includes("Could only connect to 0 of")
   ) {
     return new Error(
-      "无法连接 Lit 节点网络。通常是当前网络无法访问 Lit 节点，或 Lit 测试网络暂时不稳定。请刷新后重试；如果仍失败，可切换网络/VPN，或在 Vercel 中把 VITE_LIT_NETWORK 调整为更稳定的 Lit 网络，并适当增大 VITE_LIT_CONNECT_TIMEOUT_MS。",
+      "无法连接 Lit 节点网络。你控制台里那些 `/web/handshake/` 超时或断开，大概率就是 Lit 节点握手失败；这不是 IPFS 读取错误。请刷新后重试；如果仍失败，可切换网络/VPN，或在 Vercel 中把 VITE_LIT_NETWORK 调整为更稳定的 Lit 网络，并适当增大 VITE_LIT_CONNECT_TIMEOUT_MS。",
     );
   }
 

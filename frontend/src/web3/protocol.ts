@@ -151,6 +151,21 @@ function explainContractReadError(error: unknown): never {
   throw error instanceof Error ? error : new Error(message);
 }
 
+function explainCreateSignalError(
+  error: unknown,
+  options?: {
+    deactivatedBrokenSignal?: boolean;
+  },
+) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (options?.deactivatedBrokenSignal) {
+    return new Error(`${message} 我已经自动把刚才那条未完成的占位信号撤回，避免它继续留在链上。`);
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 async function resolveActiveProtocolAddress(protocolAddress?: Address): Promise<Address> {
   const resolvedProtocolAddress = protocolAddress ?? (await resolveSemaphoreProtocolAddress());
 
@@ -543,9 +558,7 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   const account = getWalletAccount(walletClient);
   const { hintCid, publicDocument } = await createSignalPublicContent(input);
 
-  if (input.visibility === "private") {
-    await ensureLitReady();
-  }
+  await ensureLitReady();
 
   const createHash = await walletClient.writeContract({
     abi: protocolAbi,
@@ -581,30 +594,59 @@ export async function createSignal(walletClient: WalletClient, input: ComposeInp
   }
 
   const signalId = createdSignalId.toString();
-  const encryptedPayload = await encryptSignalContent({
-    authorAddress: account.address,
-    contentHtml: input.contentHtml,
-    signalId,
-  });
-  const encryptedCid = await createEncryptedSignalDocument(encryptedPayload);
-  const updateHash = await walletClient.writeContract({
-    abi: protocolAbi,
-    account,
-    address: protocolAddress,
-    args: [createdSignalId, encryptedCid],
-    chain: seamphoreChain,
-    functionName: "setEncryptedContentCID",
-  });
+  let encryptedCid: string | null = null;
+  let updateHash: `0x${string}` | null = null;
 
-  await publicClient.waitForTransactionReceipt({ hash: updateHash });
+  try {
+    const encryptedPayload = await encryptSignalContent({
+      authorAddress: account.address,
+      contentHtml: input.contentHtml,
+      signalId,
+    });
+    encryptedCid = await createEncryptedSignalDocument(encryptedPayload);
+    updateHash = await walletClient.writeContract({
+      abi: protocolAbi,
+      account,
+      address: protocolAddress,
+      args: [createdSignalId, encryptedCid],
+      chain: seamphoreChain,
+      functionName: "setEncryptedContentCID",
+    });
 
-  return {
-    encryptedCid,
-    hash: updateHash,
-    hintCid,
-    hook: publicDocument.hook,
-    signalId,
-  };
+    await publicClient.waitForTransactionReceipt({ hash: updateHash });
+
+    return {
+      encryptedCid,
+      hash: updateHash,
+      hintCid,
+      hook: publicDocument.hook,
+      signalId,
+    };
+  } catch (error) {
+    let deactivatedBrokenSignal = false;
+
+    if (!updateHash) {
+      try {
+        const rollbackHash = await walletClient.writeContract({
+          abi: protocolAbi,
+          account,
+          address: protocolAddress,
+          args: [createdSignalId],
+          chain: seamphoreChain,
+          functionName: "deactivateSignal",
+        });
+
+        await publicClient.waitForTransactionReceipt({ hash: rollbackHash });
+        deactivatedBrokenSignal = true;
+      } catch (rollbackError) {
+        console.error("Failed to deactivate broken placeholder signal", rollbackError);
+      }
+    }
+
+    throw explainCreateSignalError(error, {
+      deactivatedBrokenSignal,
+    });
+  }
 }
 
 export async function deactivateSignal(walletClient: WalletClient, signalId: string) {

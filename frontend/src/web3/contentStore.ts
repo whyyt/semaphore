@@ -147,17 +147,29 @@ async function uploadJsonDocument(
     name: string;
   },
 ) {
-  const response = await fetch("/api/pinata-json", {
-    body: JSON.stringify({
-      content,
-      keyvalues: options.keyvalues,
-      name: options.name,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch("/api/pinata-json", {
+      body: JSON.stringify({
+        content,
+        keyvalues: options.keyvalues,
+        name: options.name,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (message.includes("Failed to fetch") || message.includes("fetch failed")) {
+      throw new Error("无法连接站点的 Pinata 上传接口 `/api/pinata-json`。这一步还没到 IPFS 网关读取，属于上传接口本身没有成功返回。");
+    }
+
+    throw error instanceof Error ? error : new Error(message);
+  }
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
